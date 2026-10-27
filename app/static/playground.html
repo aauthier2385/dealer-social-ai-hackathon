@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Dealer Social AI · Playground</title>
+<link rel="stylesheet" href="/playground.css">
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">The Dealer Social</p>
+      <h1>AI Playground</h1>
+      <p class="lede">Try the Dealer Social AI service directly. Built on Meta&rsquo;s models during the Meta Global AI Developer Hackathon.</p>
+    </div>
+    <div class="status" id="status" aria-live="polite">
+      <span class="dot" id="status-dot"></span><span id="status-text">Checking service&hellip;</span>
+    </div>
+  </header>
+
+  <section class="card" aria-labelledby="conn-title">
+    <h2 id="conn-title">1. Connection test</h2>
+    <p class="hint">Sends one short prompt to Muse Spark and shows the reply. Requires the service token.</p>
+    <form id="ping-form" novalidate>
+      <label for="token">Service token</label>
+      <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste SERVICE_TOKEN (kept in this tab only)">
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" name="prompt" rows="3" maxlength="500">Say hello to the sales team at Demo Motors Ford.</textarea>
+      <div class="row">
+        <button id="send" type="submit">Send to Muse Spark</button>
+        <span class="count" id="count">0 / 500</span>
+      </div>
+    </form>
+    <div class="result" id="result" hidden>
+      <p class="reply" id="reply"></p>
+      <dl class="meta">
+        <div><dt>Model</dt><dd id="model">&ndash;</dd></div>
+        <div><dt>Time</dt><dd id="latency">&ndash;</dd></div>
+        <div><dt>Tokens</dt><dd id="tokens">&ndash;</dd></div>
+      </dl>
+    </div>
+    <p class="error" id="error" role="alert" hidden></p>
+  </section>
+
+  <section class="card muted" aria-labelledby="next-title">
+    <h2 id="next-title">Coming during the hackathon</h2>
+    <ul class="soon">
+      <li>Voice note &rarr; relationship memory, every fact linked to its source sentence</li>
+      <li>Long-range check-in planner with drafts in the salesperson&rsquo;s voice</li>
+      <li>Salesperson handoff brief and warm introduction</li>
+      <li>Relationships-at-risk brief for managers</li>
+      <li>Automatic privacy blur for store photos (SAM 3.1)</li>
+      <li>Truckiversary posts (Muse Image)</li>
+    </ul>
+  </section>
+
+  <footer class="foot">Demo uses fictional data only. Nothing you type here is stored or logged.</footer>
+</main>
+<script src="/playground.js"></script>
+</body>
+</html>

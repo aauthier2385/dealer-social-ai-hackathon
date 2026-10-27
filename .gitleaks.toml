@@ -1,0 +1,10 @@
+title = "dealer-social-ai secret scan"
+
+[extend]
+useDefault = true
+
+# Only obviously fake values are allowed: test fixtures and the CI-only placeholder token.
+[allowlist]
+description = "Test fixtures and CI placeholder (not real secrets)"
+paths = ['''^tests/''']
+regexes = ['''ci-only-token-not-a-secret-[0-9a-f]+''']

@@ -1,0 +1,4 @@
+# Runtime dependencies (kept deliberately small: no third-party HTTP client).
+starlette==1.7.0
+uvicorn==0.54.0
+python-dotenv==1.2.3
