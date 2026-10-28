@@ -113,7 +113,7 @@ def anonymize_sample(text: str) -> tuple[str, str]:
     return text, name
 
 
-def _voice_samples(data: dict) -> tuple[list[str], frozenset]:
+def voice_samples(data: dict) -> tuple[list[str], frozenset]:
     raw = data.get("voice_samples", [])
     if raw is None:
         return [], frozenset()
@@ -133,6 +133,29 @@ def _voice_samples(data: dict) -> tuple[list[str], frozenset]:
             names.add(name.lower())
         samples.append(text)
     return samples, frozenset(names)
+
+
+def parse_facts(data: dict) -> list[Fact]:
+    """Verified facts sent by a caller. Sensitive ones are dropped, whatever the caller sent."""
+    raw_facts = data.get("facts", [])
+    if not isinstance(raw_facts, list) or len(raw_facts) > MAX_FACTS:
+        raise PlanInputError(f"'facts' must be a list of up to {MAX_FACTS} facts.")
+    facts: list[Fact] = []
+    for n, raw in enumerate(raw_facts, start=1):
+        if not isinstance(raw, dict):
+            raise PlanInputError("Each fact must be an object.")
+        f = Fact(
+            id=_text(raw, "id", 8, required=False) or f"F{n}",
+            about=_text(raw, "about", 80, required=False),
+            category=_text(raw, "category", 30, required=False) or "personal",
+            fact=_text(raw, "fact", 300),
+            timing=_text(raw, "timing", 60, required=False),
+            certainty="uncertain" if raw.get("certainty") == "uncertain" else "stated",
+        )
+        # Defense in depth: the memory step already withholds these, but callers may send anything.
+        if not sensitive_type(f"{f.fact} {f.timing}"):
+            facts.append(f)
+    return facts
 
 
 def parse_input(data: dict) -> PlanInput:
@@ -156,26 +179,9 @@ def parse_input(data: dict) -> PlanInput:
             raise PlanInputError("'birthday' is not a real date.") from exc
         birthday = (month, day)
 
-    raw_facts = data.get("facts", [])
-    if not isinstance(raw_facts, list) or len(raw_facts) > MAX_FACTS:
-        raise PlanInputError(f"'facts' must be a list of up to {MAX_FACTS} facts.")
-    facts: list[Fact] = []
-    for n, raw in enumerate(raw_facts, start=1):
-        if not isinstance(raw, dict):
-            raise PlanInputError("Each fact must be an object.")
-        f = Fact(
-            id=_text(raw, "id", 8, required=False) or f"F{n}",
-            about=_text(raw, "about", 80, required=False),
-            category=_text(raw, "category", 30, required=False) or "personal",
-            fact=_text(raw, "fact", 300),
-            timing=_text(raw, "timing", 60, required=False),
-            certainty="uncertain" if raw.get("certainty") == "uncertain" else "stated",
-        )
-        # Defense in depth: the memory step already withholds these, but callers may send anything.
-        if not sensitive_type(f"{f.fact} {f.timing}"):
-            facts.append(f)
+    facts = parse_facts(data)
 
-    samples, sample_names = _voice_samples(data)
+    samples, sample_names = voice_samples(data)
     return PlanInput(
         customer_name=_text(data, "customer_name", 80),
         vehicle=_text(data, "vehicle", 80, required=False) or "vehicle",

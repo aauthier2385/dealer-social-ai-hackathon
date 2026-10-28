@@ -84,6 +84,32 @@
     </div>
   </section>
 
+  <section class="card" id="handoff-card" aria-labelledby="handoff-title" hidden>
+    <div class="section-head">
+      <h2 id="handoff-title">Salesperson handoff</h2>
+      <span class="models">Muse Spark</span>
+    </div>
+    <p class="hint">When a salesperson leaves, their customers shouldn&rsquo;t feel it. The new salesperson gets a brief on this customer and a warm first text in their own voice. Uses the customer, vehicle, store and delivery date above.</p>
+    <form id="handoff-form" class="plan-form" novalidate>
+      <div class="field"><label for="ho-from">Leaving</label><input id="ho-from" maxlength="60"></div>
+      <div class="field"><label for="ho-to">Taking over</label><input id="ho-to" maxlength="60" value="Andrew"></div>
+      <div class="field wide"><label for="ho-voice">New salesperson&rsquo;s texting style (optional)</label><textarea id="ho-voice" rows="2" maxlength="1700" placeholder="Paste 3 to 5 texts the new salesperson has really sent, one per line. Leave empty for the store's default voice."></textarea></div>
+      <div class="row"><button id="ho-btn" type="submit">Build handoff</button><span class="count" id="ho-progress" aria-live="polite"></span></div>
+    </form>
+    <p class="error" id="ho-error" role="alert" hidden></p>
+    <div id="ho-result" hidden>
+      <div class="checks" id="ho-checks"></div>
+      <p class="summary" id="ho-headline"></p>
+      <h3>Know before you call</h3>
+      <ul class="facts" id="ho-know"></ul>
+      <h3>Talk about</h3>
+      <ul class="facts" id="ho-talk"></ul>
+      <h3>First introduction</h3>
+      <div id="ho-intro" class="tp-body"></div>
+      <p class="foot" id="ho-meta"></p>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="conn-title">
     <h2 id="conn-title">Connection test</h2>
     <p class="hint">Sends one short prompt to Muse Spark and shows the reply.</p>
@@ -109,7 +135,6 @@
   <section class="card muted" aria-labelledby="next-title">
     <h2 id="next-title">Coming during the hackathon</h2>
     <ul class="soon">
-            <li>Salesperson handoff brief and warm introduction</li>
       <li>Relationships-at-risk brief for managers</li>
       <li>Automatic privacy blur for store photos (SAM 3.1)</li>
       <li>Truckiversary posts (Muse Image)</li>

@@ -257,7 +257,8 @@
     (m.facts || []).forEach((f) => { f.about = swap(f.about); f.fact = swap(f.fact); });
     m.summary = swap(m.summary);
     ["plan-customer", "plan-salesperson"].forEach((id) => { $(id).value = swap($(id).value); });
-    $("plan-result").hidden = true; // an old plan would still use the misheard name
+    ["plan-result", "ho-result"].forEach((id) => { $(id).hidden = true; }); // old drafts used the misheard name
+    ["ho-from", "ho-to"].forEach((id) => { $(id).value = swap($(id).value); });
   }
 
   function editName(li, current) {
@@ -353,6 +354,10 @@
     planResult.hidden = true;
     planError.hidden = true;
     planCard.hidden = false;
+    $("ho-from").value = salesperson.name || "";
+    $("ho-result").hidden = true;
+    $("ho-error").hidden = true;
+    $("handoff-card").hidden = false;
   }
 
   const CHANNELS = { text: "Text", call: "Call", call_or_text: "Call or text", mail: "Mail" };
@@ -473,6 +478,98 @@
     } finally {
       planBtn.disabled = false;
       planProgress.textContent = "";
+    }
+  });
+
+  // ---------- Salesperson handoff ----------
+  const hoForm = $("handoff-form"), hoBtn = $("ho-btn"), hoError = $("ho-error"), hoResult = $("ho-result");
+
+  function factChips(refs) {
+    const row = el("div", "fact-top");
+    (refs || []).forEach((f) => row.append(el("span", "chip", f.id + " · " + f.fact)));
+    return row;
+  }
+
+  function pointList(id, points, empty) {
+    $(id).replaceChildren(...(points || []).map((p) => {
+      const li = el("li", "fact");
+      const text = el("span", "fact-text", p.point);
+      li.append(text);
+      if (p.not_sure) { const top = el("div", "fact-top"); top.append(el("span", "chip uncertain", "Not sure")); li.prepend(top); }
+      li.append(factChips(p.uses_facts));
+      return li;
+    }));
+    if (!(points || []).length) $(id).replaceChildren(el("li", "quote", empty));
+  }
+
+  function renderHandoff(data) {
+    const c = data.checks || {};
+    $("ho-checks").replaceChildren(
+      el("span", "check good", (c.points_kept || 0) + " points, each tied to a fact"),
+      el("span", "check" + (c.points_dropped ? " cut" : ""), (c.points_dropped || 0) + " dropped"),
+      el("span", "check" + (c.intro_replaced_with_safe_draft ? " cut" : " good"),
+        c.intro_replaced_with_safe_draft ? "Intro replaced with a safe draft" : "Intro checked"),
+      el("span", "check good", data.voice && data.voice.source === "salesperson_samples"
+        ? "Voice: " + (data.to_salesperson || "").split(" ")[0] + "'s texts (" + data.voice.samples_used + ")"
+        : "Voice: store default"),
+    );
+    $("ho-headline").textContent = data.headline || "";
+    pointList("ho-know", data.know_first, "No verified facts to brief on yet.");
+    pointList("ho-talk", data.talk_about, "No conversation starters from the verified facts.");
+    const intro = data.intro || {};
+    const box = $("ho-intro");
+    const head = el("div", "tp-head");
+    head.append(el("span", "tp-title", (data.to_salesperson || "").split(" ")[0] + " → " + (data.customer || "").split(" ")[0]),
+      el("span", "chip channel", "Text"));
+    if ((intro.safe_draft_used || []).length) head.append(el("span", "chip safe", "Safe draft"));
+    box.replaceChildren(head, draftBlock(intro.text || ""));
+    if ((intro.call_notes || []).length) {
+      const ul = el("ul", "notes");
+      intro.call_notes.forEach((n) => ul.append(el("li", null, n)));
+      box.append(el("span", "chip", "Or call: notes"), ul);
+    }
+    if ((intro.uses_facts || []).length) box.append(factChips(intro.uses_facts));
+    const u = data.usage || {};
+    $("ho-meta").textContent = (data.latency_ms / 1000).toFixed(1) + " s · " + (u.total_tokens || 0) +
+      " tokens (" + (u.reasoning_tokens || 0) + " reasoning) · " + (data.model || "");
+    hoResult.hidden = false;
+  }
+
+  hoForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hoError.hidden = true;
+    if (!token()) { show(hoError, "Paste the service token first."); return; }
+    if (!lastMemory) return;
+    const body = {
+      customer_name: $("plan-customer").value.trim(),
+      vehicle: $("plan-vehicle").value.trim(),
+      store_name: $("plan-store").value.trim(),
+      customer_since: $("plan-date").value,
+      from_salesperson: $("ho-from").value.trim(),
+      to_salesperson: $("ho-to").value.trim(),
+      voice_samples: $("ho-voice").value.split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 5),
+      facts: (lastMemory.facts || []).map((f) => ({
+        id: f.id, about: f.about, category: f.category, fact: f.fact, timing: f.timing, certainty: f.certainty,
+      })),
+    };
+    if (!body.customer_name || !body.from_salesperson || !body.to_salesperson) {
+      show(hoError, "Fill in the customer and both salespeople."); return;
+    }
+    hoBtn.disabled = true;
+    $("ho-progress").textContent = "Writing the brief and checking every line…";
+    try {
+      const response = await fetch("/v1/handoff/brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token() },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) { hoResult.hidden = true; show(hoError, await readError(response)); return; }
+      renderHandoff(await response.json());
+    } catch (e) {
+      show(hoError, "Could not reach the service.");
+    } finally {
+      hoBtn.disabled = false;
+      $("ho-progress").textContent = "";
     }
   });
 })();

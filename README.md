@@ -26,7 +26,7 @@ visits. This service gives it a memory.
 | 0 | Service foundation: auth, credit protection, safe Meta client, test page | Muse Spark | ✅ Built |
 | 1 | **Relationship memory**: voice note → relationship facts, each linked to the exact sentence it came from | Voice Transcribe, Muse Spark | ✅ Built |
 | 2 | **Follow-up planner**: the dealership's own cadence (day-after check-in, thank-you card, 30-day call, first service, birthday, anniversary) plus life-event check-ins, drafted in the salesperson's voice; a human approves every message | Muse Spark | ✅ Built |
-| 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark | Planned |
+| 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark | ✅ Built |
 | 4 | **Relationships at risk**: a manager brief of customers who need attention | Muse Spark | Planned |
 | 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 | Planned |
 | 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image | Planned |
@@ -76,6 +76,19 @@ server needs no audio software and never receives anything but the format Meta e
   from a stated fact with a timing and fall within two years. A draft that fails is replaced by a
   safe draft in the same voice, and the plan says so.
 
+## How the handoff protects the relationship
+
+- The salesperson taking over gets a **brief** for each customer: a one-line headline, what to know
+  before the first call, and conversation starters, plus a **warm first text** (and call notes) in
+  their own voice.
+- **Every brief point must cite a fact it really mentions**, checked in code. A point that cites
+  nothing, or only cites facts it never mentions, is dropped, so the brief cannot invent a hobby.
+  Points built on uncertain facts are marked "not sure".
+- **The introduction never gives a reason the previous salesperson left** (fired, quit, "no longer
+  with us", "unfortunately") and never speaks badly of anyone. It must greet the customer by name and
+  name the new salesperson. A draft that fails is replaced by a safe introduction.
+- Sensitive facts are dropped before the model sees them, as in every other feature.
+
 ## Architecture
 
 ```
@@ -116,6 +129,7 @@ Meta Model API  (Muse Spark · Voice Transcribe · SAM 3.1 · Muse Image)
 | POST | `/v1/ping-model` | Bearer token | Sends a short prompt to Muse Spark and returns the reply |
 | POST | `/v1/plan/touchpoints` | Bearer token | JSON: customer, vehicle, salesperson, store, delivery date, optional birthday, optional voice samples, verified facts. Returns a dated plan of drafts and call notes |
 | POST | `/v1/memory/voice-note` | Bearer token | Body: a mono 16-bit WAV (16/24 kHz, up to 5 min). Returns people, verified facts with sources, withheld details and a redacted transcript |
+| POST | `/v1/handoff/brief` | Bearer token | JSON: customer, vehicle, store, leaving and new salesperson, optional customer-since date and voice samples, verified facts. Returns a brief and a warm introduction |
 | GET | `/playground` | none (page) | Browser test page; the token is typed in and kept in page memory only |
 
 ```bash
@@ -169,3 +183,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Voice variety: copy the salesperson's style without repeating whole sample sentences, signature phrases in at most two messages, thank-you cards written as cards, 96 tests |
 | Oct 27 | Fact tags checked in code: a touchpoint only lists the facts its draft really mentions, 99 tests |
 | Oct 27 | Name corrections: tap a misheard name to fix it everywhere it is used (quotes stay as heard), checked in the browser on desktop and phone |
+| Oct 27 | Feature 3, salesperson handoff: brief with every point tied to a fact it mentions, warm introduction in the new salesperson's voice with a no-departure-reason check, playground section, 113 tests |

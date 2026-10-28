@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from app import __version__, audio, memory, planner
+from app import __version__, audio, handoff, memory, planner
 from app.config import Settings, load_settings
 from app.meta_client import MetaClient, MetaError, Transport
 from app.ratelimit import RateLimiter
@@ -239,6 +239,32 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
             return _meta_error(exc)
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
+    async def handoff_brief(request: Request) -> Response:
+        """Feature 3: a customer's verified facts -> handoff brief and warm intro."""
+        if not token_ok(request, settings.service_token):
+            return _error(401, "unauthorized", "Missing or wrong service token.")
+        allowed, wait = limiter.allow_all(
+            [
+                (client_key(request), settings.per_client_per_minute, 60),
+                ("global-minute", settings.global_per_minute, 60),
+                ("global-day", settings.global_per_day, 86400),
+            ]
+        )
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests. Try again shortly.", wait)
+        try:
+            data = await read_json(request, MAX_PLAN_BODY)
+            customer, since, from_sp = handoff.parse_input(data)
+        except RequestTooLarge:
+            return _error(413, "too_large", "Request body is too large.")
+        except (BadRequest, planner.PlanInputError) as exc:
+            return _error(400, "invalid_input", str(exc))
+        try:
+            result = await handoff.brief(meta, customer, since, from_sp)
+        except MetaError as exc:
+            return _meta_error(exc)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
     def static(body: bytes, media_type: str):
         async def handler(request: Request) -> Response:
             return Response(
@@ -254,6 +280,7 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
         Route("/v1/ping-model", ping_model, methods=["POST"]),
         Route("/v1/memory/voice-note", voice_note_memory, methods=["POST"]),
         Route("/v1/plan/touchpoints", plan_touchpoints, methods=["POST"]),
+        Route("/v1/handoff/brief", handoff_brief, methods=["POST"]),
         Route("/favicon.ico", favicon, methods=["GET"]),
     ]
     if settings.playground_enabled:
