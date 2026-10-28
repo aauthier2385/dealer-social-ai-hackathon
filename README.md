@@ -42,10 +42,11 @@ Every step can only remove facts, never add them:
 4. **Code verifies every quote** really appears in the transcript. Anything that does not is
    dropped, and a wrong sentence number is corrected to the real source.
 5. A **privacy screen** withholds sensitive details (health, money and deal numbers, religion,
-   politics, legal trouble, immigration, relationship trouble). It runs in code as well as in the
+   politics, legal trouble, immigration, relationship trouble, bereavement). It runs in code as well as in the
    model, so one model mistake cannot leak a detail.
-6. A second **Muse Spark pass acts as the judge**: it re-checks each fact against its sentence and
-   drops anything not clearly stated. A missing verdict counts as a rejection (fail closed). The
+6. A second **Muse Spark pass acts as the judge**: it re-checks each fact against its sentence (read
+   with the lines just before it, so a short answer is judged with its question) and drops anything
+   not clearly stated. It also writes the summary, from verified facts only. A missing verdict counts as a rejection (fail closed). The
    judge can lower certainty ("not sure") but never raise it.
 7. Sentences behind withheld details are **redacted** from the transcript that is returned.
 
@@ -135,4 +136,5 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 |---|---|
 | Oct 27 | Service foundation: config, token auth, rate and concurrency limits, safe Meta client, `/health`, `/v1/ping-model`, `/playground`, 28 tests, CI |
 | Oct 27 | Feature 1, relationship memory: Voice Transcribe (diarization), structured extraction, quote verification in code, privacy screen and redaction, judge pass, browser audio conversion and recording, playground results view, 49 tests |
-| Oct 27 | First real run fixes: summary now written by the judge from verified facts only (a co-signing detail had leaked through the summary), co-signing and credit applications added to the privacy screen, one withheld entry per sentence, 54 tests |
+| Oct 27 | First real run fixes: summary now written by the judge from verified facts only (a co-signing detail had leaked through the summary), co-signing and credit applications added to the privacy screen, one withheld entry per sentence, most serious category wins, 55 tests |
+| Oct 27 | Real-run tuning from three debriefs: question-and-answer facts (the self-check reads each answer with the lines before it), bereavement added to the privacy screen, self-check switched to minimal reasoning to cut cost, 59 tests |

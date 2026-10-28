@@ -45,6 +45,7 @@ SENSITIVE_TYPES = [
     "immigration",
     "sexuality",
     "relationship",
+    "bereavement",
     "other",
 ]
 
@@ -54,7 +55,9 @@ _SENSITIVE_PATTERNS = {  # most serious first: a sentence gets the label of its 
     "legal": r"\b(arrest\w*|jail|prison|dui|dwi|court|lawsuit|probation|lawyer|attorney)\b",
     "health": r"\b(hospital\w*|sick|illness|ill|cancer|surger(y|ies)|diagnos\w*|medication\w*|"
     r"medicine|chemo\w*|therap(y|ist)|rehab|disease|diabet\w*|pregnan\w*|disab\w*|injur\w*|"
-    r"mental health|depress\w*|anxiety|passed away|funeral|heart attack|stroke)\b",
+    r"mental health|depress\w*|anxiety|heart attack|stroke)\b",
+    "bereavement": r"\b(widow\w*|passed away|passed on|funeral|died|dies|dying|death|deceased|"
+    r"(late|lost (his|her|their)) (husband|wife|son|daughter|mother|father|mom|dad|child))\b",
     "immigration": r"\b(immigra\w*|visa|green card|deport\w*|citizenship)\b",
     "relationship": r"\b(divorc\w*|separated|affair|custody)\b",
     "religion": r"\b(church|mosque|synagogue|religio\w*|pray\w*|bible)\b",
@@ -173,29 +176,41 @@ make a future conversation warm.
 
 Rules:
 - Only facts actually said. Never infer, guess or add detail.
-- Every fact cites exactly one source_id and copies an exact quote (4 to 25 consecutive words) from \
+- Every fact cites exactly one source_id and copies an exact quote (2 to 25 consecutive words) from \
 that sentence, word for word.
+- Debriefs are often question and answer: a manager asks ("does she work or is she retired?") and \
+the salesperson answers briefly ("she's retired"). Combine them into one fact, cite the ANSWER \
+sentence and quote the answer's words. A short quote like "she's retired" is fine.
+- If the answer is "I don't know" or does not confirm the question, there is no fact.
 - If the speaker sounds unsure ("I think", "maybe", "might", "not sure"), set certainty "uncertain".
 - timing: when it happens, if said ("March", "next summer", "every May"); otherwise "".
 - Never record deal numbers or money: prices, payments, credit, loans, income, debt.
 - Sensitive details (health, money, religion, politics, legal trouble, immigration, sexuality, \
-relationship trouble): list them with category "sensitive" and a generic fact such as "health \
+relationship trouble, a death or bereavement): list them with category "sensitive" and a generic fact such as "health \
 detail" so they can be withheld. Never repeat the details.
+- Speech runs together, so one sentence can mix a sensitive part and a safe part ("he's got a lot \
+of money, he's retired"). Still extract the safe fact, and quote only the safe words ("he's \
+retired"). The sensitive part is withheld separately.
 - One fact per item, short, written for a salesperson reading it before a call.
 - people: everyone named, with relationship and related_to. Use "" when unknown."""
 
 JUDGE_SYSTEM = """You are a strict auditor for a customer-memory system. For each candidate fact, \
-decide using ONLY its cited transcript sentence:
+decide using its cited sentence, read together with the "context" lines just before it. A question \
+followed by an answer that confirms it counts as stated (Q: "does she work or is she retired?" A: \
+"she's retired" supports "Retired"). An answer like "I don't know" supports nothing:
 - "supported": the sentence clearly states the fact, and the fact adds nothing that was not said.
 - "not_supported": the fact is not stated, exaggerates, adds detail, or cites the wrong sentence.
-- "sensitive": the fact or its sentence involves health, money or deal numbers, religion, politics, \
-legal trouble, immigration, sexuality or relationship trouble. Set sensitive_type.
+- "sensitive": the FACT or its QUOTE itself reveals health, money or deal numbers, religion, \
+politics, legal trouble, immigration, sexuality, relationship trouble, or a death or bereavement. Set \
+sensitive_type. Judge the fact and quote, not the rest of the sentence: "Retired" quoted as "he's \
+retired" is not sensitive even if the same sentence also mentions money (that part is withheld \
+separately).
 certainty: "uncertain" if the sentence is hedged (I think, maybe, might, not sure, possibly), \
 otherwise "stated".
 Return exactly one verdict per candidate, by index. When in doubt, choose "not_supported".
 Then write summary: one or two sentences a salesperson would read before calling the customer, \
 using ONLY the facts you marked "supported". Never mention anything sensitive, money, financing, \
-credit or co-signing."""
+credit, co-signing, a death or anything that was not confirmed."""
 
 
 class NoSpeech(Exception):
@@ -252,6 +267,12 @@ def locate_quote(quote: str, source_id: str, sentences: list[Sentence]) -> Sente
         if needle in _norm(sentence.text):
             return sentence
     return None
+
+
+def _context(sentence: Sentence, sentences: list[Sentence], before: int = 2) -> list[str]:
+    """The lines just before a sentence, so a short answer can be read with its question."""
+    i = next((n for n, s in enumerate(sentences) if s.id == sentence.id), 0)
+    return [f"[{s.id}] ({s.speaker}) {s.text}" for s in sentences[max(0, i - before) : i]]
 
 
 def _transcript_lines(sentences: list[Sentence]) -> str:
@@ -353,6 +374,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
                     "source_id": c["sentence"].id,
                     "quote": c["quote"],
                     "certainty": c["certainty"],
+                    "context": _context(c["sentence"], sentences),
                 }
                 for i, c in enumerate(candidates)
             ],
@@ -368,7 +390,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
             ],
             JUDGE_SCHEMA,
             "fact_audit",
-            reasoning_effort="low",
+            reasoning_effort="minimal",  # a yes/no check per fact does not need deep thinking
         )
         stages["judge_ms"] = int((time.monotonic() - started) * 1000)
         _add_usage(usage, result.usage)

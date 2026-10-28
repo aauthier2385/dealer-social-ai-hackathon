@@ -429,3 +429,103 @@ class SeverityOrderTests(unittest.TestCase):
         text = "his wife cosigned with him and his daughter went to jail for a DUI"
         self.assertEqual(memory.sensitive_type(text), "legal")
         self.assertEqual(memory.sensitive_type("cosigned after his surgery"), "health")
+
+
+QA_TRANSCRIPT = {
+    "turns": [
+        {"speaker": "A", "startMs": 0, "transcript": "Does she work or is she retired?"},
+        {"speaker": "B", "startMs": 3000, "transcript": "She's retired."},
+        {"speaker": "A", "startMs": 5000, "transcript": "Was she married?"},
+        {
+            "speaker": "B",
+            "startMs": 7000,
+            "transcript": "She's a widow, her husband died last year.",
+        },
+        {"speaker": "A", "startMs": 9000, "transcript": "Wasn't he moving to Florida?"},
+        {"speaker": "B", "startMs": 11000, "transcript": "I don't know anything about that."},
+    ]
+}
+QA_EXTRACTION = {
+    "people": [],
+    "facts": [fact("Madeline Parks", "work", "Retired", "S2", "She's retired")],
+}
+
+
+class QuestionAnswerTests(unittest.TestCase):
+    """From the Oct 27 real runs: debriefs are mostly a question followed by a short answer."""
+
+    def setUp(self):
+        self.meta = FakeMetaRouter(transcription=QA_TRANSCRIPT, extraction=QA_EXTRACTION)
+        self.body = upload(create_app(settings(), self.meta), make_wav()).json()
+
+    def test_short_answer_fact_is_kept_with_its_question_as_context(self):
+        self.assertEqual([f["fact"] for f in self.body["facts"]], ["Retired"])
+        judge_request = json.loads(self.meta.calls[2]["body"])
+        listing = judge_request["messages"][1]["content"].split("Candidate facts:\n", 1)[1]
+        context = json.loads(listing)[0]["context"]
+        self.assertEqual(context, ["[S1] (A) Does she work or is she retired?"])
+
+    def test_self_check_uses_minimal_reasoning_and_extraction_uses_low(self):
+        extract, judge = (json.loads(c["body"]) for c in self.meta.calls[1:3])
+        self.assertEqual(extract["reasoning_effort"], "low")
+        self.assertEqual(judge["reasoning_effort"], "minimal")
+
+    def test_bereavement_lines_are_redacted_including_the_question(self):
+        transcript = {t["id"]: t for t in self.body["transcript"]}
+        self.assertTrue(transcript["S4"]["redacted"])
+        self.assertEqual(transcript["S4"]["text"], "[withheld: bereavement detail]")
+        self.assertNotIn("widow", json.dumps(self.body).lower())
+        self.assertNotIn("died", json.dumps(self.body).lower())
+
+    def test_bereavement_screen(self):
+        for text in [
+            "she's a widow",
+            "her husband died last year",
+            "he passed away",
+            "his late wife",
+        ]:
+            self.assertEqual(memory.sensitive_type(text), "bereavement", text)
+        for text in ["his dead battery", "a die-hard Ford fan"]:
+            self.assertEqual(memory.sensitive_type(text), "", text)
+
+
+class MixedSentenceTests(unittest.TestCase):
+    """From the Oct 27 Mark Stevenson run: safe facts were lost when they shared a sentence with a
+    sensitive detail."""
+
+    def test_safe_fact_survives_a_mixed_sentence_but_the_sentence_is_redacted(self):
+        transcription = {
+            "turns": [
+                {"speaker": "A", "startMs": 0, "transcript": "What did he do for a living?"},
+                {
+                    "speaker": "B",
+                    "startMs": 2000,
+                    "transcript": "He had a lot of money, he's retired, he cuts down a lot of trees.",
+                },
+            ]
+        }
+        extraction = {
+            "people": [],
+            "facts": [
+                fact("Mark Stevenson", "work", "Retired", "S2", "he's retired"),
+                fact(
+                    "Mark Stevenson",
+                    "hobbies",
+                    "Cuts down a lot of trees",
+                    "S2",
+                    "he cuts down a lot of trees",
+                ),
+            ],
+        }
+        meta = FakeMetaRouter(transcription=transcription, extraction=extraction)
+        body = upload(create_app(settings(), meta), make_wav()).json()
+        self.assertEqual(
+            [f["fact"] for f in body["facts"]], ["Retired", "Cuts down a lot of trees"]
+        )
+        line = {t["id"]: t for t in body["transcript"]}["S2"]
+        self.assertTrue(line["redacted"])
+        self.assertNotIn("money", json.dumps(body).lower())
+
+    def test_prompts_tell_both_passes_to_judge_the_fact_not_the_sentence(self):
+        self.assertIn("quote only the safe words", memory.EXTRACT_SYSTEM)
+        self.assertIn("Judge the fact and quote, not the rest of the sentence", memory.JUDGE_SYSTEM)
