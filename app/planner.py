@@ -285,6 +285,8 @@ not salesy: you may offer help, never push.
 
 Rules:
 - Use ONLY the facts given, and list the ids you used in uses_facts. Never invent details.
+- Facts with the same "about" describe the same individual. A pet's name and its breed are one \
+animal ("Bill, your little Frenchie"), never two.
 - A fact with certainty "uncertain" may only be asked about, never stated.
 - Never mention money, prices, payments, credit, health, a death, legal matters or other sensitive \
 topics.

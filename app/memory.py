@@ -94,7 +94,7 @@ EXTRACTION_SCHEMA = {
                 "properties": {
                     "name": _str(),
                     "relationship": _str(
-                        enum=["customer", "family_member", "salesperson", "manager", "other"]
+                        enum=["customer", "family_member", "pet", "salesperson", "manager", "other"]
                     ),
                     "related_to": _str(),
                     "vehicle_purchased": _str(),
@@ -193,7 +193,11 @@ detail" so they can be withheld. Never repeat the details.
 of money, he's retired"). Still extract the safe fact, and quote only the safe words ("he's \
 retired"). The sensitive part is withheld separately.
 - One fact per item, short, written for a salesperson reading it before a call.
-- people: everyone named, with relationship and related_to. Use "" when unknown."""
+- people: everyone named, with relationship and related_to. Use "" when unknown. A named pet is a \
+person entry with relationship "pet" and related_to = its owner.
+- Keep one individual as one individual. When context shows two descriptions are the same pet or \
+person ("he had his dog Bill with him" then "he had his little Frenchie with him"), use the name as \
+"about" for every fact about them ("Bill": "Is a little Frenchie"), never two separate animals."""
 
 JUDGE_SYSTEM = """You are a strict auditor for a customer-memory system. For each candidate fact, \
 decide using its cited sentence, read together with the "context" lines just before it. A question \
@@ -293,9 +297,11 @@ def _asked(sentence: Sentence, sentences: list[Sentence], redact: dict, quote: s
     prev = sentences[i - 1]
     if not prev.speaker or prev.speaker == sentence.speaker:
         return ""
-    if prev.id not in redact and len(_norm(prev.text).split()) < 3:  # "gotcha", "oh nice"
+    if prev.id in redact:  # the question itself was withheld: show no question rather than a stub
         return ""
-    return f"[withheld: {redact[prev.id]} detail]" if prev.id in redact else prev.text[:200]
+    if len(_norm(prev.text).split()) < 3:  # "gotcha", "oh nice"
+        return ""
+    return prev.text[:200]
 
 
 def _transcript_lines(sentences: list[Sentence]) -> str:

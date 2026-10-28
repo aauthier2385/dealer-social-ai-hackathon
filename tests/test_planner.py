@@ -379,3 +379,8 @@ class InputTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SameIndividualTests(unittest.TestCase):
+    def test_prompt_treats_a_pet_name_and_breed_as_one_animal(self):
+        self.assertIn('same "about" describe the same individual', planner.PLAN_SYSTEM)

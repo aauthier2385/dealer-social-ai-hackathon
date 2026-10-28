@@ -594,3 +594,24 @@ class SecondRealRunTests(unittest.TestCase):
 
     def test_summary_prompt_hedges_uncertain_facts(self):
         self.assertIn('Say "may" or "possibly"', memory.JUDGE_SYSTEM)
+
+
+class ThirdRealRunTests(unittest.TestCase):
+    """Fixes from the Oct 27 planner run: one dog counted as two, and a withheld question shown."""
+
+    def test_withheld_question_is_not_shown_as_the_question(self):
+        sent = memory.Sentence
+        sentences = [
+            sent("S1", "A", 0, "he sold his business for a lot of money"),
+            sent("S2", "B", 1000, "he's retired"),
+        ]
+        self.assertEqual(
+            memory._asked(sentences[1], sentences, {"S1": "financial"}, "he's retired"), ""
+        )
+
+    def test_named_pets_are_people_entries(self):
+        relationships = memory.EXTRACTION_SCHEMA["properties"]["people"]["items"]["properties"][
+            "relationship"
+        ]["enum"]
+        self.assertIn("pet", relationships)
+        self.assertIn("never two separate animals", memory.EXTRACT_SYSTEM)

@@ -168,7 +168,7 @@
       const li = el("li", "person");
       li.append(el("b", null, p.name));
       const bits = [p.relationship.replace("_", " ")];
-      if (p.related_to && p.relationship === "family_member") bits.push("of " + p.related_to);
+      if (p.related_to && (p.relationship === "family_member" || p.relationship === "pet")) bits.push("of " + p.related_to);
       if (p.vehicle_purchased) bits.push("bought " + p.vehicle_purchased);
       if (p.vehicle_traded) bits.push("traded " + p.vehicle_traded);
       li.append(el("span", null, bits.join(" · ")));
