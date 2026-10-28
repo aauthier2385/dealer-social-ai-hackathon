@@ -57,6 +57,7 @@ _SENSITIVE_PATTERNS = {  # most serious first: a sentence gets the label of its 
     r"medicine|chemo\w*|therap(y|ist)|rehab|disease|diabet\w*|pregnan\w*|disab\w*|injur\w*|"
     r"mental health|depress\w*|anxiety|heart attack|stroke)\b",
     "bereavement": r"\b(widow\w*|passed away|passed on|funeral|died|dies|dying|death|deceased|"
+    r"(he|she|husband|wife|son|daughter|mother|father|mom|dad)( had| has|'s)? passed|"
     r"(late|lost (his|her|their)) (husband|wife|son|daughter|mother|father|mom|dad|child))\b",
     "immigration": r"\b(immigra\w*|visa|green card|deport\w*|citizenship)\b",
     "relationship": r"\b(divorc\w*|separated|affair|custody)\b",
@@ -209,7 +210,8 @@ certainty: "uncertain" if the sentence is hedged (I think, maybe, might, not sur
 otherwise "stated".
 Return exactly one verdict per candidate, by index. When in doubt, choose "not_supported".
 Then write summary: one or two sentences a salesperson would read before calling the customer, \
-using ONLY the facts you marked "supported". Never mention anything sensitive, money, financing, \
+using ONLY the facts you marked "supported". Say "may" or "possibly" for any fact whose \
+certainty is "uncertain". Never mention anything sensitive, money, financing, \
 credit, co-signing, a death or anything that was not confirmed."""
 
 
@@ -226,6 +228,12 @@ class Sentence:
 
 
 _SPLIT = re.compile(r"(?<=[.!?])\s+")
+# Control tokens that occasionally leak into transcripts, e.g. "speaker_A|>" or "<|endoftext|>".
+_ARTIFACTS = re.compile(r"<\|[^|>]{0,40}\|>|<?\|?\bspeaker_[A-Za-z0-9]{1,4}\|?>?")
+
+
+def _clean(text: str) -> str:
+    return re.sub(r"\s+", " ", _ARTIFACTS.sub(" ", text)).strip()
 
 
 def split_sentences(transcription: dict) -> list[Sentence]:
@@ -241,9 +249,9 @@ def split_sentences(transcription: dict) -> list[Sentence]:
             continue
         speaker = turn.get("speaker") if isinstance(turn.get("speaker"), str) else ""
         start = turn.get("startMs") if isinstance(turn.get("startMs"), int) else 0
-        for piece in _SPLIT.split(text.strip()):
+        for piece in _SPLIT.split(_clean(text)):
             piece = piece.strip()
-            if piece:
+            if re.search(r"[A-Za-z0-9]", piece):
                 sentences.append(Sentence(f"S{len(sentences) + 1}", speaker[:8], start, piece))
     return sentences
 
@@ -273,6 +281,21 @@ def _context(sentence: Sentence, sentences: list[Sentence], before: int = 2) -> 
     """The lines just before a sentence, so a short answer can be read with its question."""
     i = next((n for n, s in enumerate(sentences) if s.id == sentence.id), 0)
     return [f"[{s.id}] ({s.speaker}) {s.text}" for s in sentences[max(0, i - before) : i]]
+
+
+def _asked(sentence: Sentence, sentences: list[Sentence], redact: dict, quote: str) -> str:
+    """For a short answer ("yes yes", "she's retired"), the other speaker's line just before it."""
+    if len(_norm(quote).split()) > 5:
+        return ""
+    i = next((n for n, s in enumerate(sentences) if s.id == sentence.id), 0)
+    if i == 0:
+        return ""
+    prev = sentences[i - 1]
+    if not prev.speaker or prev.speaker == sentence.speaker:
+        return ""
+    if prev.id not in redact and len(_norm(prev.text).split()) < 3:  # "gotcha", "oh nice"
+        return ""
+    return f"[withheld: {redact[prev.id]} detail]" if prev.id in redact else prev.text[:200]
 
 
 def _transcript_lines(sentences: list[Sentence]) -> str:
@@ -414,15 +437,18 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
                 c["certainty"] = "uncertain"
             kept.append(c)
 
-    # One withheld entry per sentence a sensitive fact came from.
-    withheld = [{"type": kind, "source_id": sid} for sid, kind in redact.items()]
-    checks["withheld"] = len(withheld)
-
     # Redact any other sentence the screen flags, even if no fact came from it.
     for s in sentences:
         kind = sensitive_type(s.text)
         if kind and s.id not in redact:
             redact[s.id] = kind
+
+    # One withheld entry per redacted sentence, in transcript order.
+    order = {s.id: n for n, s in enumerate(sentences)}
+    withheld = [
+        {"type": redact[sid], "source_id": sid} for sid in sorted(redact, key=order.__getitem__)
+    ]
+    checks["withheld"] = len(withheld)
 
     facts_out = []
     for n, c in enumerate(kept, start=1):
@@ -437,6 +463,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
                 "certainty": c["certainty"],
                 "source": {"sentence_id": s.id, "speaker": s.speaker, "start_ms": s.start_ms},
                 "quote": c["quote"],
+                "asked": _asked(s, sentences, redact, c["quote"]),
             }
         )
     checks["kept"] = len(facts_out)

@@ -529,3 +529,68 @@ class MixedSentenceTests(unittest.TestCase):
     def test_prompts_tell_both_passes_to_judge_the_fact_not_the_sentence(self):
         self.assertIn("quote only the safe words", memory.EXTRACT_SYSTEM)
         self.assertIn("Judge the fact and quote, not the rest of the sentence", memory.JUDGE_SYSTEM)
+
+
+class SecondRealRunTests(unittest.TestCase):
+    """From the second real run on Oct 27, after the first round of fixes."""
+
+    transcription = {
+        "turns": [
+            {"speaker": "A", "startMs": 0, "transcript": "oh so back in September"},
+            {"speaker": "B", "startMs": 2000, "transcript": "yes yes"},
+            {"speaker": "A", "startMs": 3000, "transcript": "speaker_A|> gotcha"},
+            {"speaker": "A", "startMs": 4000, "transcript": "<|endoftext|>"},
+            {
+                "speaker": "B",
+                "startMs": 5000,
+                "transcript": "she just said he passed a while back and then she bought a farm",
+            },
+            {"speaker": "B", "startMs": 7000, "transcript": "we were able to lower payment"},
+        ]
+    }
+    extraction = {
+        "people": [],
+        "facts": [
+            fact(
+                "Carl Jeffers",
+                "vehicle",
+                "Wife's Trailblazer was bought in September",
+                "S2",
+                "yes yes",
+            ),
+            fact("Madeline Parks", "family", "Bought a farm", "S4", "she bought a farm"),
+        ],
+    }
+
+    def setUp(self):
+        meta = FakeMetaRouter(transcription=self.transcription, extraction=self.extraction)
+        self.body = upload(create_app(settings(), meta), make_wav()).json()
+        self.lines = {t["id"]: t for t in self.body["transcript"]}
+
+    def test_transcription_artifacts_are_removed(self):
+        self.assertEqual(self.lines["S3"]["text"], "gotcha")
+        self.assertNotIn("speaker_A", json.dumps(self.body))
+        self.assertNotIn("endoftext", json.dumps(self.body))
+        self.assertEqual(len(self.body["transcript"]), 5)  # the artifact-only line is dropped
+
+    def test_he_passed_is_bereavement_and_redacted(self):
+        self.assertEqual(self.lines["S4"]["text"], "[withheld: bereavement detail]")
+        self.assertEqual(memory.sensitive_type("her husband had passed"), "bereavement")
+        self.assertEqual(memory.sensitive_type("he passed the inspection"), "bereavement")
+
+    def test_withheld_notice_counts_every_redacted_line(self):
+        self.assertEqual(
+            [(w["source_id"], w["type"]) for w in self.body["withheld"]],
+            [("S4", "bereavement"), ("S5", "financial")],
+        )
+        self.assertEqual(self.body["checks"]["withheld"], 2)
+
+    def test_short_answer_shows_the_question_it_answered(self):
+        facts = {f["fact"]: f for f in self.body["facts"]}
+        self.assertEqual(
+            facts["Wife's Trailblazer was bought in September"]["asked"], "oh so back in September"
+        )
+        self.assertEqual(facts["Bought a farm"]["asked"], "")  # same speaker before it: no question
+
+    def test_summary_prompt_hedges_uncertain_facts(self):
+        self.assertIn('Say "may" or "possibly"', memory.JUDGE_SYSTEM)

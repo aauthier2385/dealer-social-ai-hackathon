@@ -180,6 +180,7 @@
       if (f.timing) top.append(el("span", "chip timing", f.timing));
       if (f.certainty === "uncertain") top.append(el("span", "chip uncertain", "Not sure"));
       li.append(top, el("span", "fact-text", f.fact));
+      if (f.asked) li.append(el("p", "asked", "Asked: “" + f.asked + "”"));
       const quote = el("p", "quote", "“" + f.quote + "” ");
       const link = el("button", "source-link",
         f.source.sentence_id + (f.source.speaker ? " · speaker " + f.source.speaker : "") + " · " + clock(f.source.start_ms));

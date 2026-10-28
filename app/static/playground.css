@@ -90,6 +90,7 @@ h3 { margin: 8px 0 0; font-size: 13px; letter-spacing: .06em; text-transform: up
 .chip { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-soft); }
 .chip.uncertain { border-color: var(--warn); color: var(--warn); }
 .chip.timing { border-color: var(--accent); color: var(--accent); }
+.asked { margin: 0; font-size: 12px; color: var(--ink-soft); font-style: italic; overflow-wrap: anywhere; }
 .quote { margin: 0; font-size: 13px; color: var(--ink-soft); overflow-wrap: anywhere; }
 .source-link { font: inherit; font-size: 12px; padding: 0; background: none; color: var(--accent); border: 0; text-decoration: underline; cursor: pointer; }
 .withheld { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; color: var(--ink-soft); }
