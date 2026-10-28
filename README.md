@@ -164,3 +164,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | First real planner run: a named pet and its breed stay one animal (memory and planner), a short answer no longer shows a withheld question as its question, 87 tests |
 | Oct 27 | Per-salesperson texting voice: optional voice samples with customer names swapped out, a check that drafts never borrow a sample customer, a texting-style box in the playground; extraction no longer turns a pronoun into a fact, 95 tests |
 | Oct 27 | Voice variety: copy the salesperson's style without repeating whole sample sentences, signature phrases in at most two messages, thank-you cards written as cards, 96 tests |
+| Oct 27 | Fact tags checked in code: a touchpoint only lists the facts its draft really mentions, 99 tests |

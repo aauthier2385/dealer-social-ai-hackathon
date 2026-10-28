@@ -466,3 +466,43 @@ class VoiceVarietyTests(unittest.TestCase):
         self.assertIn("at most two messages", voice)
         self.assertIn("never paste a whole sample sentence", voice)
         self.assertIn("write it as a card, not a text", voice)
+
+
+class UsesFactsTests(unittest.TestCase):
+    """Real run: a day-after text about the new Ranger was tagged with "Previously owned a 2010 Ranger"."""
+
+    def plan(self):
+        return planner.parse_input(
+            {
+                "customer_name": "Mark Stevenson",
+                "vehicle": "26 Ford Ranger Lariat",
+                "salesperson_name": "Joey",
+                "delivery_date": "2026-10-27",
+                "facts": [
+                    {"id": "F1", "about": "Mark Stevenson", "fact": "Bought 26 Ford Ranger Lariat"},
+                    {"id": "F5", "about": "Bill", "fact": "Is a little Frenchie"},
+                    {"id": "F8", "about": "Mark Stevenson", "fact": "Cuts down a lot of trees"},
+                    {
+                        "id": "F10",
+                        "about": "Mark Stevenson",
+                        "fact": "Previously owned a 2010 Ranger",
+                    },
+                ],
+            }
+        )
+
+    def ids(self, content, ids):
+        refs = [{"id": i, "fact": ""} for i in ids]
+        return [r["id"] for r in planner.mentioned_facts(refs, content, self.plan())]
+
+    def test_unmentioned_fact_is_untagged(self):
+        text = "Hey Mark, it's Joey at Demo Motors. How's the new Ford Ranger Lariat? Ask how Bill is doing"
+        self.assertEqual(self.ids(text, ["F1", "F5", "F10"]), ["F1", "F5"])
+
+    def test_mentioned_facts_stay(self):
+        notes = "Ask about the old 2010 Ranger. Ask how the tree cutting is going"
+        self.assertEqual(self.ids(notes, ["F8", "F10"]), ["F8", "F10"])
+
+    def test_pet_counts_by_name_or_breed(self):
+        self.assertEqual(self.ids("Give your Frenchie a treat", ["F5"]), ["F5"])
+        self.assertEqual(self.ids("Tell Bill hi", ["F5"]), ["F5"])

@@ -416,6 +416,46 @@ def _fallbacks(plan: PlanInput) -> dict[str, dict]:
     }
 
 
+_STOP = set(
+    "a an the and or of to in on at for with his her their has had have is was are be he she they "
+    "him them it its from by as that this very really may might some lot lots new got get likes "
+    "like loves love wants wanted bought purchased previously owned owns drives drove about into "
+    "out up down who".split()
+)
+
+
+def _stems(text: str) -> set[str]:
+    """Rough word stems: lowercase, no possessive or plural s, first five letters."""
+    out = set()
+    for word in re.findall(r"[a-z0-9]+", text.lower().replace("’", "'").replace("'s", "")):
+        if word in _STOP or len(word) < 3:
+            continue
+        if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+            word = word[:-1]
+        out.add(word[:5])
+    return out
+
+
+def mentioned_facts(refs: list[dict], content: str, plan: PlanInput) -> list[dict]:
+    """Keep only the facts a draft really mentions. The model sometimes lists a fact it never used
+    (a "2010 Ranger" tag on a text that only talks about the new Ranger). Words shared with the
+    vehicle bought or the customer's name don't count, since every draft has those."""
+    common = _stems(
+        f"{plan.vehicle} {plan.customer_name} {plan.salesperson_name} {plan.store_name}"
+    )
+    said = _stems(content)
+    kept = []
+    for ref in refs:
+        fact = next(f for f in plan.facts if f.id == ref["id"])
+        about = fact.about if fact.about and fact.about != plan.customer_name else ""
+        words = _stems(f"{fact.fact} {about}")
+        distinctive = words - common
+        # A fact that is only the vehicle itself ("Bought a blue F-150") counts when the vehicle is named.
+        if (distinctive or words) & said:
+            kept.append(ref)
+    return kept
+
+
 def _borrowed_name(text: str, plan: PlanInput) -> bool:
     """True if a draft greets or mentions a customer from the voice samples instead of this one."""
     if not plan.sample_names:
@@ -560,6 +600,8 @@ async def plan_touchpoints(meta: MetaClient, plan: PlanInput) -> dict:
                 card = fallback["card"]
             tp["card"] = card
 
+        content = " ".join([tp["text"], tp["card"], *tp["call_notes"]])
+        tp["uses_facts"] = mentioned_facts(tp["uses_facts"], content, plan)
         tp["safe_draft_used"] = problems
         if problems:
             checks["replaced_with_safe_draft"] += 1
