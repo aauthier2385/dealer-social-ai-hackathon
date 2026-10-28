@@ -361,7 +361,11 @@ def custom_voice(samples: list[str]) -> str:
         "and anniversaries.\n"
         f"{lines}\n"
         "Use these ONLY for style. Never reuse a name, vehicle or any detail from them; every "
-        "detail must come from the verified facts. Spelling should still be correct."
+        "detail must come from the verified facts. Spelling should still be correct.\n"
+        "Copy the voice, not the sentences: never paste a whole sample sentence, and use any "
+        "signature phrase (an opener, a nickname, a catchphrase) in at most two messages across "
+        "the whole plan, so each message opens differently. The thank-you card is handwritten "
+        "and mailed: keep their personality, but write it as a card, not a text."
     )
 
 

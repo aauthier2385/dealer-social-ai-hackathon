@@ -163,3 +163,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Feature 2, follow-up planner: cadence scheduling in code, drafts in the salesperson's voice, draft checks with safe replacements, life-event check-ins, playground timeline with copy buttons, favicon, 84 tests |
 | Oct 27 | First real planner run: a named pet and its breed stay one animal (memory and planner), a short answer no longer shows a withheld question as its question, 87 tests |
 | Oct 27 | Per-salesperson texting voice: optional voice samples with customer names swapped out, a check that drafts never borrow a sample customer, a texting-style box in the playground; extraction no longer turns a pronoun into a fact, 95 tests |
+| Oct 27 | Voice variety: copy the salesperson's style without repeating whole sample sentences, signature phrases in at most two messages, thank-you cards written as cards, 96 tests |

@@ -458,3 +458,11 @@ class PronounRuleTests(unittest.TestCase):
         from app import memory
 
         self.assertIn('not \\\n"Is female"'.replace("\\\n", ""), memory.EXTRACT_SYSTEM)
+
+
+class VoiceVarietyTests(unittest.TestCase):
+    def test_custom_voice_limits_repeated_signature_phrases(self):
+        voice = planner.custom_voice(["How's it hanging, my dude!! Joey here"])
+        self.assertIn("at most two messages", voice)
+        self.assertIn("never paste a whole sample sentence", voice)
+        self.assertIn("write it as a card, not a text", voice)
