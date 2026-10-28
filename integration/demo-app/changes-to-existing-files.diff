@@ -1,0 +1,201 @@
+diff --git a/.env.development.example b/.env.development.example
+index 4b741b3..1f423f9 100644
+--- a/.env.development.example
++++ b/.env.development.example
+@@ -19,10 +19,12 @@ CRM_ELEAD_ENABLED=false
+ OPENAI_MODERATION_ENABLED=false
+ OPENAI_API_KEY=
+ 
+-# Meta Model API (hackathon). Not used by v0.9.50 yet; reserved for the new meta_ai module.
+-# Put the real key ONLY in your local .env (never commit it, never paste it in chat).
+-META_AI_ENABLED=false
+-MODEL_API_KEY=
++# Dealer Social AI (hackathon). The separate AI service holds the Meta key; this app only needs
++# its address and its SERVICE_TOKEN. Leave both empty and every AI feature stays hidden.
++# Locally: run the AI service (run_local.ps1, port 8090), then use http://127.0.0.1:8090.
++# Put the real token ONLY in your local .env (never commit it, never paste it in chat).
++DEALER_SOCIAL_AI_URL=
++DEALER_SOCIAL_AI_TOKEN=
+ 
+ # Immutable ID of your local test platform-owner account (required for Superadmin).
+ PLATFORM_OWNER_USER_ID=
+diff --git a/src/main.rs b/src/main.rs
+index d0bd9d3..e982ff9 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -17,6 +17,8 @@ mod pwa;
+ mod push;
+ mod roster;
+ mod routes;
++// Hackathon (Oct 2026): Dealer Social AI agent. See src/ai_agent/mod.rs.
++mod ai_agent;
+ mod security;
+ mod share_target;
+ mod storage;
+@@ -44,6 +46,8 @@ async fn main() -> std::io::Result<()> {
+     let url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+     let pool = db::connect(&url).await;
+     db::migrate(&pool).await;
++    ai_agent::schema::migrate(&pool).await;
++    println!("[ai] Dealer Social AI connected: {}", ai_agent::client::enabled());
+     let production_security = security::production();
+     println!("[security] production protections enabled: {production_security}");
+     if env::var("RENDER")
+@@ -115,6 +119,7 @@ async fn main() -> std::io::Result<()> {
+             .configure(routes::appointments::routes)
+             .configure(routes::admin::routes)
+             .configure(routes::superadmin::routes)
++            .configure(ai_agent::routes)
+     })
+     .bind((host.as_str(), port))?
+     .run()
+diff --git a/src/routes/social.rs b/src/routes/social.rs
+index 2c3ae00..fc89d16 100644
+--- a/src/routes/social.rs
++++ b/src/routes/social.rs
+@@ -16,6 +16,15 @@ struct MsgForm {
+     recipient_id: Uuid,
+     #[serde(default)]
+     body: String,
++    /// Hackathon: set when the message started from a follow-up draft, so it is marked sent.
++    #[serde(default)]
++    followup_id: String,
++}
++
++#[derive(Deserialize)]
++struct ConversationQuery {
++    /// Hackathon: "Use draft" from the Follow-ups tab opens the chat with this follow-up's draft.
++    followup: Option<String>,
+ }
+ 
+ #[derive(Deserialize)]
+@@ -30,6 +39,7 @@ struct Notice {
+     friends: i64,
+     appointments: i64,
+     admin: i64,
++    followups: i64,
+ }
+ 
+ pub fn routes(c: &mut web::ServiceConfig) {
+@@ -624,7 +634,12 @@ async fn new_message(r: HttpRequest, p: web::Data<PgPool>) -> HttpResponse {
+     html(shell("New Message", "messages", &me, &body))
+ }
+ 
+-async fn conversation(r: HttpRequest, p: web::Data<PgPool>, id: web::Path<Uuid>) -> HttpResponse {
++async fn conversation(
++    r: HttpRequest,
++    p: web::Data<PgPool>,
++    id: web::Path<Uuid>,
++    q: web::Query<ConversationQuery>,
++) -> HttpResponse {
+     let me = match current_user(&r, p.get_ref()).await {
+         Some(u) => u,
+         None => return go("/login"),
+@@ -703,12 +718,41 @@ async fn conversation(r: HttpRequest, p: web::Data<PgPool>, id: web::Path<Uuid>)
+         String::new()
+     };
+ 
++    // Hackathon: staff see the customer's next follow-up and the voice-note button in the chat.
++    let (ai_bar, ai_script) = if role == "customer" {
++        let bar = crate::ai_agent::followups::chat_bar(p.get_ref(), &me, other).await;
++        let script = if bar.is_empty() {
++            ""
++        } else {
++            r#"<style>.ai-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:#f7f9fc;font-size:14px}.ai-next{margin-right:auto}.fu-due.late{color:var(--red);font-weight:700}.fu-due.today{color:#9a6700;font-weight:700}.fu-chip{font-size:11px;text-transform:uppercase;letter-spacing:.03em;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);background:#fff}</style><script src="/branding/ai-voice-note.js"></script>"#
++        };
++        (bar, script)
++    } else {
++        (String::new(), "")
++    };
++    let followup = q
++        .followup
++        .as_deref()
++        .and_then(|s| Uuid::parse_str(s.trim()).ok());
++    let draft = match followup {
++        Some(fid) => crate::ai_agent::followups::draft_for(p.get_ref(), &me, fid, other).await,
++        None => None,
++    };
++    let (draft_value, followup_field) = match (&draft, followup) {
++        (Some(d), Some(fid)) => (
++            format!(r#" value="{}""#, esc(&d.replace("{booking_link}", &format!("{app_base}/appointments?with={}", me.id)))),
++            format!(r#"<input type="hidden" name="followup_id" value="{fid}">"#),
++        ),
++        _ => (String::new(), String::new()),
++    };
++
+     let body = format!(
+         r##"<div class="chat-page">
+ <div class="card chat-card">
+ <div class="chat-head"><a class="chat-back" href="/messages" aria-label="Back to messages">‹</a>{avatar}<div class="chat-person"><b>{name}</b><span>{role}</span></div>{appt}</div>
++{ai_bar}
+ <div class="thread" id="thread">{bubbles}</div>
+-<form class="send" id="messageSend" method="post" action="/messages"><input type="hidden" name="recipient_id" value="{other}"><input id="messageInput" name="body" placeholder="Message {name_attr}…" autocomplete="off" maxlength="2000" required><button class="send-button" aria-label="Send message">➤</button></form>
++<form class="send" id="messageSend" method="post" action="/messages"><input type="hidden" name="recipient_id" value="{other}">{followup_field}<input id="messageInput" name="body"{draft_value} placeholder="Message {name_attr}…" autocomplete="off" maxlength="2000" required><button class="send-button" aria-label="Send message">➤</button></form>
+ <p id="messageStatus" class="muted small" role="status" aria-live="polite">Keep messages respectful. When safety checks are enabled, private message text is sent to OpenAI before delivery. <a href="/privacy">Privacy Notice</a>.</p>
+ </div>
+ </div>
+@@ -757,7 +801,7 @@ async fn conversation(r: HttpRequest, p: web::Data<PgPool>, id: web::Path<Uuid>)
+             "Customer"
+         },
+     );
+-    html(shell(&name, "messages", &me, &(body + MESSAGE_SEND_JS + MESSAGE_LAYOUT_JS)))
++    html(shell(&name, "messages", &me, &(body + MESSAGE_SEND_JS + MESSAGE_LAYOUT_JS + ai_script)))
+ }
+ 
+ const MESSAGE_SEND_JS: &str = concat!("<script>", include_str!("../../static/branding/message-send.js"), "</script>");
+@@ -809,6 +853,12 @@ async fn send(r: HttpRequest, p: web::Data<PgPool>, f: web::Form<MsgForm>) -> Ht
+     .await;
+     match result {
+         Ok(_) => {
++            // Hackathon: a message sent from a follow-up draft completes that follow-up.
++            if let Ok(fid) = Uuid::parse_str(f.followup_id.trim()) {
++                if me.is_staff() {
++                    crate::ai_agent::followups::mark_sent(p.get_ref(), &me, fid, f.recipient_id).await;
++                }
++            }
+             // v0.9.39 privacy: successful sends are no longer written to the server log.
+             // A per-message "who messaged whom" trail in hosting logs is customer data that
+             // outlives the app's own retention controls. Failures are still logged below.
+@@ -870,11 +920,13 @@ async fn notifications(r: HttpRequest, p: web::Data<PgPool>) -> HttpResponse {
+         0
+     };
+ 
++    let followups = crate::ai_agent::followups::due_count(pool, &me).await;
+     HttpResponse::Ok().json(Notice {
+         messages,
+         friends,
+         appointments,
+         admin,
++        followups,
+     })
+ }
+ 
+diff --git a/src/routes/ui.rs b/src/routes/ui.rs
+index 4038d65..b5fd33e 100644
+--- a/src/routes/ui.rs
++++ b/src/routes/ui.rs
+@@ -339,6 +339,10 @@ pub fn shell(title: &str, active: &str, user: &CurrentUser, body: &str) -> Strin
+             },
+         ),
+     ];
++    // Hackathon: the Follow-ups to-do list, for staff only, when the AI service is set up.
++    if user.is_staff() && crate::ai_agent::client::enabled() {
++        items.push(("followups", "/follow-ups", "Follow-ups"));
++    }
+     items.push(("offers", "/offers", "Offers"));
+     if user.is_admin() {
+         items.push(("admin", "/admin", "Admin"));
+diff --git a/src/security.rs b/src/security.rs
+index b00f8e5..c1740ea 100644
+--- a/src/security.rs
++++ b/src/security.rs
+@@ -126,7 +126,8 @@ pub async fn guard(
+         ("x-content-type-options", "nosniff"),
+         ("x-frame-options", "DENY"),
+         ("referrer-policy", "strict-origin-when-cross-origin"),
+-        ("permissions-policy", "camera=(), microphone=(), geolocation=()"),
++        // Hackathon: staff record voice notes in the app, so the microphone is allowed for this site only.
++        ("permissions-policy", "camera=(), microphone=(self), geolocation=()"),
+         (
+             "content-security-policy",
+             "default-src 'self' https:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",

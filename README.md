@@ -6,9 +6,9 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026), S
 
 > **Everything in this repository was built during the Hackathon.** It is a new, standalone
 > service. The existing product it plugs into, [The Dealer Social](https://www.thedealersocial.com),
-> is not part of this repository. The few connecting lines added to that app during the
-> Hackathon will be copied into [`integration/`](integration/) so every piece of new work is
-> visible here.
+> is not part of this repository. Every file and line added to that app during the Hackathon
+> (voice notes in the chat, the Follow-ups tab, handoff and the at-risk brief) is copied into
+> [`integration/`](integration/) so every piece of new work is visible here.
 
 ## The problem
 
@@ -199,3 +199,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Feature 3, salesperson handoff: brief with every point tied to a fact it mentions, warm introduction in the new salesperson's voice with a no-departure-reason check, playground section, 113 tests |
 | Oct 27 | Transcription stutters ("Ranger Ranger") removed from people, facts and summary; quotes stay as heard; filler lines ("oh oh nice") no longer shown as the question, 116 tests |
 | Oct 28 | Feature 6, relationships at risk: signals scored and ranked in code, top customers explained by Muse Spark with every explanation citing its signals, code-only mode, sample store in the playground, 129 tests |
+| Oct 28 | Integration into The Dealer Social demo app (copied to `integration/`): voice note in the customer's chat with review and name fixes, three new tables, Follow-ups tab after Appointments with Use draft / Mark done / Snooze / Skip and a due badge, next-follow-up bar in each chat, admin store view, reassign-with-introductions handoff, at-risk brief, fictional demo store seed |
