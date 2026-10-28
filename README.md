@@ -62,6 +62,11 @@ server needs no audio software and never receives anything but the format Meta e
 - **Muse Spark writes the content** with structured output: texts in the salesperson's own style
   (learned from three real example texts), call notes for calls, and a handwritten thank-you card.
   It may suggest up to three extra check-ins for life events, such as a child turning 16.
+- **Each salesperson keeps their own voice**: send up to five texts they have really sent and the
+  drafts copy their greeting, punctuation, slang and emoji use. Customer names in those samples are
+  swapped for `{first_name}` before anything reaches the model, samples about money or health are
+  ignored, and a draft that mentions a customer from the samples is replaced. With no samples, the
+  store's default voice is used.
 - **Code checks every draft**: it may cite only facts it was given; nothing sensitive; texts fit in
   a message; birthday texts must be pure celebration (no service, deals or offers); only the
   service text may contain the booking link, and it always does. Life-event suggestions must come
@@ -106,7 +111,7 @@ Meta Model API  (Muse Spark · Voice Transcribe · SAM 3.1 · Muse Image)
 |---|---|---|---|
 | GET | `/health` | none | Liveness check for Render |
 | POST | `/v1/ping-model` | Bearer token | Sends a short prompt to Muse Spark and returns the reply |
-| POST | `/v1/plan/touchpoints` | Bearer token | JSON: customer, vehicle, salesperson, store, delivery date, optional birthday, verified facts. Returns a dated plan of drafts and call notes |
+| POST | `/v1/plan/touchpoints` | Bearer token | JSON: customer, vehicle, salesperson, store, delivery date, optional birthday, optional voice samples, verified facts. Returns a dated plan of drafts and call notes |
 | POST | `/v1/memory/voice-note` | Bearer token | Body: a mono 16-bit WAV (16/24 kHz, up to 5 min). Returns people, verified facts with sources, withheld details and a redacted transcript |
 | GET | `/playground` | none (page) | Browser test page; the token is typed in and kept in page memory only |
 
@@ -157,3 +162,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Second real run: transcription artifacts stripped, "he passed" added to bereavement, the withheld notice counts every redacted line, short answers show the question they answered, the summary hedges uncertain facts, 66 tests |
 | Oct 27 | Feature 2, follow-up planner: cadence scheduling in code, drafts in the salesperson's voice, draft checks with safe replacements, life-event check-ins, playground timeline with copy buttons, favicon, 84 tests |
 | Oct 27 | First real planner run: a named pet and its breed stay one animal (memory and planner), a short answer no longer shows a withheld question as its question, 87 tests |
+| Oct 27 | Per-salesperson texting voice: optional voice samples with customer names swapped out, a check that drafts never borrow a sample customer, a texting-style box in the playground; extraction no longer turns a pronoun into a fact, 95 tests |

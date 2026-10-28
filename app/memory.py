@@ -193,6 +193,8 @@ detail" so they can be withheld. Never repeat the details.
 of money, he's retired"). Still extract the safe fact, and quote only the safe words ("he's \
 retired"). The sensitive part is withheld separately.
 - One fact per item, short, written for a salesperson reading it before a call.
+- Never turn a pronoun into a fact: "she's a little sweetheart" is "Is a little sweetheart", not \
+"Is female".
 - people: everyone named, with relationship and related_to. Use "" when unknown. A named pet is a \
 person entry with relationship "pet" and related_to = its owner.
 - Keep one individual as one individual. When context shows two descriptions are the same pet or \

@@ -384,3 +384,77 @@ if __name__ == "__main__":
 class SameIndividualTests(unittest.TestCase):
     def test_prompt_treats_a_pet_name_and_breed_as_one_animal(self):
         self.assertIn('same "about" describe the same individual', planner.PLAN_SYSTEM)
+
+
+JOEY_SAMPLES = [
+    "Yo Kerrigan! Joey here w Demo Motors, hows the new ride treating ya 👊",
+    "Hey Gary, Joey here. that Mustang still pulling good? hit me up if u need anything",
+    "Happy birthday Tina!!! 🎉🎉 have a good one",
+    "ok",  # too short to show a style: dropped
+    "Hey Sam, your payment is due Friday",  # sensitive: dropped
+]
+
+
+class VoiceSampleTests(unittest.TestCase):
+    def setUp(self):
+        self.meta = FakePlanMeta()
+        self.app = create_app(settings(), self.meta)
+
+    def system_prompt(self, body):
+        post_plan(self.app, body)
+        return self.meta.calls[-1]["messages"][0]["content"]
+
+    def test_default_voice_without_samples(self):
+        prompt = self.system_prompt(REQUEST)
+        self.assertEqual(prompt, planner.PLAN_SYSTEM)
+        self.assertIn("Hey Gary, just wanted to check in", prompt)
+
+    def test_samples_replace_the_default_voice_with_names_swapped_out(self):
+        prompt = self.system_prompt(dict(REQUEST, voice_samples=JOEY_SAMPLES))
+        self.assertIn("Yo {first_name}! Joey here w Demo Motors", prompt)
+        self.assertIn("Hey {first_name}, Joey here. that Mustang", prompt)
+        self.assertIn("Happy birthday {first_name}!!!", prompt)
+        for leaked in ("Kerrigan", "Gary", "Tina", "due Friday", "Hey John, it's Andrew"):
+            self.assertNotIn(leaked, prompt)
+        self.assertIn("ONLY for style", prompt)
+        self.assertIn("Slots:", prompt)  # the cadence rules still apply
+
+    def test_response_says_which_voice_was_used(self):
+        body = post_plan(self.app, dict(REQUEST, voice_samples=JOEY_SAMPLES)).json()
+        self.assertEqual(body["voice"], {"source": "salesperson_samples", "samples_used": 3})
+        body = post_plan(self.app, REQUEST).json()
+        self.assertEqual(body["voice"], {"source": "store_default", "samples_used": 0})
+
+    def test_draft_that_borrows_a_sample_customer_is_replaced(self):
+        plan = plan_with(day1={"text": "Yo Gary! Joey here, hows the F-150 treating ya 👊"})
+        app = create_app(settings(), FakePlanMeta(plan))
+        body = post_plan(app, dict(REQUEST, voice_samples=JOEY_SAMPLES)).json()
+        day1 = body["touchpoints"][0]
+        self.assertEqual(day1["safe_draft_used"], ["text:name_from_voice_sample"])
+        self.assertNotIn("Gary", day1["text"])
+
+    def test_same_first_name_as_a_sample_is_fine(self):
+        samples = ["Hey Mike, Joey here. how's the truck?"]
+        body = post_plan(
+            create_app(settings(), FakePlanMeta()), dict(REQUEST, voice_samples=samples)
+        ).json()
+        self.assertEqual(body["checks"]["replaced_with_safe_draft"], 0)
+
+    def test_bad_samples_are_rejected(self):
+        for bad in ["text", ["a"] * 6, [7]]:
+            r = post_plan(self.app, dict(REQUEST, voice_samples=bad))
+            self.assertEqual(r.status, 400, bad)
+
+    def test_greeting_names_only(self):
+        self.assertEqual(planner.anonymize_sample("Hey there, Joey here")[1], "")
+        self.assertEqual(
+            planner.anonymize_sample("Good morning Kerrigan! How's Kerrigan's truck?"),
+            ("Good morning {first_name}! How's {first_name}'s truck?", "Kerrigan"),
+        )
+
+
+class PronounRuleTests(unittest.TestCase):
+    def test_extraction_never_turns_a_pronoun_into_a_fact(self):
+        from app import memory
+
+        self.assertIn('not \\\n"Is female"'.replace("\\\n", ""), memory.EXTRACT_SYSTEM)

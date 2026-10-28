@@ -73,6 +73,7 @@
       <div class="field"><label for="plan-store">Store</label><input id="plan-store" maxlength="60" value="Demo Motors"></div>
       <div class="field"><label for="plan-date">Delivery date</label><input id="plan-date" type="date"></div>
       <div class="field"><label for="plan-birthday">Birthday (optional)</label><input id="plan-birthday" placeholder="MM-DD" maxlength="5" inputmode="numeric"></div>
+      <div class="field wide"><label for="plan-voice">Texting style (optional)</label><textarea id="plan-voice" rows="3" maxlength="1700" placeholder="Paste 3 to 5 texts this salesperson has really sent, one per line. Leave empty to use the store's default voice."></textarea><span class="count">Customer names are swapped out before anything reaches the model.</span></div>
       <div class="row"><button id="plan-btn" type="submit">Build follow-up plan</button><span class="count" id="plan-progress" aria-live="polite"></span></div>
     </form>
     <p class="error" id="plan-error" role="alert" hidden></p>

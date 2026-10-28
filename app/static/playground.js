@@ -334,6 +334,9 @@
       el("span", "check" + (c.replaced_with_safe_draft ? " cut" : ""), (c.replaced_with_safe_draft || 0) + " replaced with a safe draft"),
       el("span", "check good", (c.life_events_kept || 0) + " life-event check-ins"),
       el("span", "check" + (c.life_events_dropped ? " cut" : ""), (c.life_events_dropped || 0) + " suggestions dropped"),
+      el("span", "check good", data.voice && data.voice.source === "salesperson_samples"
+        ? "Voice: " + ($("plan-salesperson").value.trim().split(" ")[0] || "salesperson") + "'s texts (" + data.voice.samples_used + ")"
+        : "Voice: store default"),
     );
     $("timeline").replaceChildren(...(data.touchpoints || []).map((tp) => {
       const li = el("li", "tp");
@@ -380,6 +383,7 @@
       store_name: $("plan-store").value.trim(),
       delivery_date: $("plan-date").value,
       birthday: $("plan-birthday").value.trim(),
+      voice_samples: $("plan-voice").value.split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 5),
       facts: (lastMemory.facts || []).map((f) => ({
         id: f.id, about: f.about, category: f.category, fact: f.fact, timing: f.timing, certainty: f.certainty,
       })),

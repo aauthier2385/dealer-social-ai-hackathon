@@ -24,6 +24,8 @@ MAX_NOTE = 160
 MAX_CARD = 600
 MAX_FACTS = 60
 MAX_LIFE_EVENTS = 3
+MAX_SAMPLES = 5
+MIN_SAMPLE = 10
 BOOKING = "{booking_link}"
 
 SLOT_TITLES = {
@@ -41,6 +43,13 @@ _BUSINESS = re.compile(
     re.IGNORECASE,
 )
 _PLACEHOLDER = re.compile(r"\{[^}]*\}")
+# "Hey John," / "Good morning Kerrigan!" -> the greeted customer's name, swapped out of voice samples.
+_GREETING = re.compile(
+    r"^(\s*(?:hey|hi|hello|yo|morning|good (?:morning|afternoon|evening)|what'?s up|happy birthday)"
+    r"[,!]?\s+)([A-Z][a-zA-Z'’-]+)\b",
+    re.IGNORECASE,
+)
+_NOT_NAMES = {"there", "everyone", "all", "guys", "man", "buddy", "friend", "sir", "maam", "ma'am"}
 
 
 class PlanInputError(ValueError):
@@ -66,6 +75,14 @@ class PlanInput:
     delivery_date: dt.date
     birthday: tuple[int, int] | None
     facts: list[Fact]
+    voice_samples: list[str] = None  # the salesperson's own texts, customer names swapped out
+    sample_names: frozenset = (
+        frozenset()
+    )  # names greeted in those samples; drafts must not use them
+
+    def __post_init__(self):
+        if self.voice_samples is None:
+            self.voice_samples = []
 
     @property
     def first_name(self) -> str:
@@ -84,6 +101,38 @@ def _text(data: dict, key: str, limit: int, required: bool = True, default: str 
     if required and not value:
         raise PlanInputError(f"'{key}' is required.")
     return value
+
+
+def anonymize_sample(text: str) -> tuple[str, str]:
+    """Swap the greeted customer's name in a voice sample for {first_name}. Returns (text, name)."""
+    match = _GREETING.match(text)
+    if not match or match[2].lower() in _NOT_NAMES:
+        return text, ""
+    name = match[2]
+    text = re.sub(rf"\b{re.escape(name)}\b", "{first_name}", text)
+    return text, name
+
+
+def _voice_samples(data: dict) -> tuple[list[str], frozenset]:
+    raw = data.get("voice_samples", [])
+    if raw is None:
+        return [], frozenset()
+    if not isinstance(raw, list) or len(raw) > MAX_SAMPLES:
+        raise PlanInputError(f"'voice_samples' must be a list of up to {MAX_SAMPLES} texts.")
+    samples, names = [], set()
+    for item in raw:
+        if not isinstance(item, str):
+            raise PlanInputError("Each voice sample must be text.")
+        text = " ".join(item.split())
+        if len(text) < MIN_SAMPLE or len(text) > MAX_TEXT:
+            continue  # too short to show a style, or not a text message
+        if sensitive_type(text):
+            continue  # a sample about money or health must not steer the drafts
+        text, name = anonymize_sample(text)
+        if name:
+            names.add(name.lower())
+        samples.append(text)
+    return samples, frozenset(names)
 
 
 def parse_input(data: dict) -> PlanInput:
@@ -126,6 +175,7 @@ def parse_input(data: dict) -> PlanInput:
         if not sensitive_type(f"{f.fact} {f.timing}"):
             facts.append(f)
 
+    samples, sample_names = _voice_samples(data)
     return PlanInput(
         customer_name=_text(data, "customer_name", 80),
         vehicle=_text(data, "vehicle", 80, required=False) or "vehicle",
@@ -134,6 +184,8 @@ def parse_input(data: dict) -> PlanInput:
         delivery_date=delivery,
         birthday=birthday,
         facts=facts,
+        voice_samples=samples,
+        sample_names=sample_names,
     )
 
 
@@ -249,18 +301,22 @@ def plan_schema(slot_names: list[str]) -> dict:
     }
 
 
-PLAN_SYSTEM = """You write follow-ups for a car salesperson who keeps customers for life. You are \
-given the customer's verified relationship facts (with ids) and a schedule of touchpoints whose \
-dates are already fixed. For every slot, write the content in the salesperson's own voice.
-
-The salesperson's real texts, to copy tone, length and style:
+DEFAULT_VOICE = """The salesperson's real texts, to copy tone, length and style:
 - Check-in: "Hey John, it's Andrew at Demo Motors. Just checking in to see how you're doing and if I \
 can help you with anything about your new Ford Bronco. Let me know if you need anything!"
 - Birthday: "Hey Kerrigan, I just wanted to wish you a happy birthday 🎂 🥳 🎉 🎈!! Enjoy your day and \
 I hope it's a great one!"
 - Anniversary: "Hey Gary, just wanted to check in to see how you're doing and how your Mustang is \
 holding up, I can't believe it's been a year!! Holler at me if you need anything!"
-Style: first name, short and warm, no pressure, exclamation points are fine, correct spelling.
+Style: first name, short and warm, no pressure, exclamation points are fine, correct spelling."""
+
+PLAN_HEAD = """You write follow-ups for a car salesperson who keeps customers for life. You are \
+given the customer's verified relationship facts (with ids) and a schedule of touchpoints whose \
+dates are already fixed. For every slot, write the content in the salesperson's own voice.
+
+"""
+
+PLAN_RULES = """
 
 Slots:
 - day1 (channel text, call or call_or_text): check-in the day after the sale, introducing yourself \
@@ -274,7 +330,7 @@ about, taken only from the facts.
 {booking_link} where the booking link goes.
 - birthday: "text" = pure celebration, emojis welcome, absolutely nothing about the vehicle, service, \
 deals or business. "call_notes" = 1-2 light bullets.
-- anniversary: "text" in the anniversary style above, naming the vehicle and that it has been a \
+- anniversary: "text" in the salesperson's anniversary style (or their general style), naming the vehicle and that it has been a \
 year; "call_notes" = 2-3 bullets.
 Leave fields a slot does not use as "" or [].
 
@@ -292,6 +348,26 @@ animal ("Bill, your little Frenchie"), never two.
 topics.
 - Texts must be under 300 characters.
 - why: one short sentence explaining the personal touch."""
+
+PLAN_SYSTEM = PLAN_HEAD + DEFAULT_VOICE + PLAN_RULES
+
+
+def custom_voice(samples: list[str]) -> str:
+    lines = "\n".join(f"- {s}" for s in samples)
+    return (
+        "The salesperson's own real texts (the customer's name is shown as {first_name}). Copy "
+        "their voice exactly: greeting, how they introduce themselves, sign-off, length, "
+        "punctuation, capitalization, slang and emoji use. Keep their style even for birthdays "
+        "and anniversaries.\n"
+        f"{lines}\n"
+        "Use these ONLY for style. Never reuse a name, vehicle or any detail from them; every "
+        "detail must come from the verified facts. Spelling should still be correct."
+    )
+
+
+def plan_system(plan: PlanInput) -> str:
+    voice = custom_voice(plan.voice_samples) if plan.voice_samples else DEFAULT_VOICE
+    return PLAN_HEAD + voice + PLAN_RULES
 
 
 def _fallbacks(plan: PlanInput) -> dict[str, dict]:
@@ -336,7 +412,16 @@ def _fallbacks(plan: PlanInput) -> dict[str, dict]:
     }
 
 
-def _text_problem(text: str, slot: str) -> str:
+def _borrowed_name(text: str, plan: PlanInput) -> bool:
+    """True if a draft greets or mentions a customer from the voice samples instead of this one."""
+    if not plan.sample_names:
+        return False
+    own = {plan.first_name.lower(), plan.salesperson_first.lower()}
+    words = {w.lower() for w in re.findall(r"[A-Za-z'’-]+", text)}
+    return bool((plan.sample_names - own) & words)
+
+
+def _text_problem(text: str, slot: str, plan: PlanInput | None = None) -> str:
     """Why a draft text is unusable, or ''."""
     if not text.strip():
         return "empty"
@@ -349,6 +434,8 @@ def _text_problem(text: str, slot: str) -> str:
         return "placeholder"
     if slot == "birthday" and _BUSINESS.search(text):
         return "business_on_birthday"
+    if plan is not None and _borrowed_name(text, plan):
+        return "name_from_voice_sample"
     return ""
 
 
@@ -384,7 +471,7 @@ async def plan_touchpoints(meta: MetaClient, plan: PlanInput) -> dict:
         f"Verified facts:\n{fact_lines or '(none)'}\n\nSchedule:\n{slot_lines}"
     )
     data, result = await meta.chat_json(
-        [{"role": "system", "content": PLAN_SYSTEM}, {"role": "user", "content": user}],
+        [{"role": "system", "content": plan_system(plan)}, {"role": "user", "content": user}],
         plan_schema([s["slot"] for s in slots]),
         "touchpoint_plan",
         reasoning_effort="low",
@@ -438,9 +525,14 @@ async def plan_touchpoints(meta: MetaClient, plan: PlanInput) -> dict:
         wants_notes = channel in ("call", "call_or_text")
         if wants_text:
             text = " ".join(str(raw.get("text", "")).split())
-            if slot == "day90" and text and BOOKING not in text and not _text_problem(text, slot):
+            if (
+                slot == "day90"
+                and text
+                and BOOKING not in text
+                and not _text_problem(text, slot, plan)
+            ):
                 text = f"{text} {BOOKING}"
-            problem = _text_problem(text, slot)
+            problem = _text_problem(text, slot, plan)
             if problem:
                 problems.append(f"text:{problem}")
                 text = fallback["text"]
@@ -457,6 +549,7 @@ async def plan_touchpoints(meta: MetaClient, plan: PlanInput) -> dict:
                 not card
                 or len(card) > MAX_CARD
                 or sensitive_type(card)
+                or _borrowed_name(card, plan)
                 or _PLACEHOLDER.search(card)
             ):
                 problems.append("card:" + ("empty" if not card else "failed_check"))
@@ -497,7 +590,7 @@ async def plan_touchpoints(meta: MetaClient, plan: PlanInput) -> dict:
             and title
             and not sensitive_type(title)
             and (
-                (channel == "text" and not _text_problem(text, "life_event"))
+                (channel == "text" and not _text_problem(text, "life_event", plan))
                 or (channel == "call" and notes)
             )
         )
@@ -528,6 +621,10 @@ async def plan_touchpoints(meta: MetaClient, plan: PlanInput) -> dict:
         "customer": plan.customer_name,
         "touchpoints": touchpoints,
         "checks": checks,
+        "voice": {
+            "source": "salesperson_samples" if plan.voice_samples else "store_default",
+            "samples_used": len(plan.voice_samples),
+        },
         "usage": result.usage,
         "latency_ms": result.latency_ms,
         "model": result.model,
