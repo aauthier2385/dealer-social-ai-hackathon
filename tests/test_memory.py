@@ -627,3 +627,17 @@ class StutterTests(unittest.TestCase):
     def test_ordinary_words_are_left_alone(self):
         self.assertEqual(memory.unstutter("he had had it for years"), "he had had it for years")
         self.assertEqual(memory.unstutter("Ford Focus"), "Ford Focus")
+
+
+class FillerQuestionTests(unittest.TestCase):
+    def test_filler_line_is_not_shown_as_the_question(self):
+        sent = memory.Sentence
+        lines = [
+            sent("S1", "A", 0, "oh oh nice"),
+            sent("S2", "B", 1000, "she really loved the color"),
+        ]
+        self.assertEqual(memory._asked(lines[1], lines, {}, "loved the color"), "")
+        lines[0] = sent("S1", "A", 0, "does she work or is she retired")
+        self.assertEqual(
+            memory._asked(lines[1], lines, {}, "loved the color"), "does she work or is she retired"
+        )

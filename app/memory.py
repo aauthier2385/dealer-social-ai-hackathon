@@ -298,6 +298,12 @@ def _context(sentence: Sentence, sentences: list[Sentence], before: int = 2) -> 
     return [f"[{s.id}] ({s.speaker}) {s.text}" for s in sentences[max(0, i - before) : i]]
 
 
+_FILLER = set(
+    "oh ok okay yeah yes yep nice cool wow gotcha right um uh hmm mm huh sure alright awesome "
+    "great really no nope well so and".split()
+)
+
+
 def _asked(sentence: Sentence, sentences: list[Sentence], redact: dict, quote: str) -> str:
     """For a short answer ("yes yes", "she's retired"), the other speaker's line just before it."""
     if len(_norm(quote).split()) > 5:
@@ -310,7 +316,8 @@ def _asked(sentence: Sentence, sentences: list[Sentence], redact: dict, quote: s
         return ""
     if prev.id in redact:  # the question itself was withheld: show no question rather than a stub
         return ""
-    if len(_norm(prev.text).split()) < 3:  # "gotcha", "oh nice"
+    words = _norm(prev.text).split()
+    if len(words) < 3 or all(w in _FILLER for w in words):  # "gotcha", "oh oh nice"
         return ""
     return prev.text[:200]
 

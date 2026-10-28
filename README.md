@@ -184,4 +184,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Fact tags checked in code: a touchpoint only lists the facts its draft really mentions, 99 tests |
 | Oct 27 | Name corrections: tap a misheard name to fix it everywhere it is used (quotes stay as heard), checked in the browser on desktop and phone |
 | Oct 27 | Feature 3, salesperson handoff: brief with every point tied to a fact it mentions, warm introduction in the new salesperson's voice with a no-departure-reason check, playground section, 113 tests |
-| Oct 27 | Transcription stutters ("Ranger Ranger") removed from people, facts and summary; quotes stay as heard, 115 tests |
+| Oct 27 | Transcription stutters ("Ranger Ranger") removed from people, facts and summary; quotes stay as heard; filler lines ("oh oh nice") no longer shown as the question, 116 tests |
