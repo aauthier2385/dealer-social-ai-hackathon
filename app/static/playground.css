@@ -100,3 +100,26 @@ h3 { margin: 8px 0 0; font-size: 13px; letter-spacing: .06em; text-transform: up
 .transcript li.flash { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .transcript li.redacted { color: var(--ink-soft); font-style: italic; }
 .transcript .sid { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-right: 6px; }
+
+/* Follow-up plan */
+.plan-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.plan-form .row { grid-column: 1 / -1; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tp { display: grid; grid-template-columns: 92px 1fr; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.tp-date { font-size: 13px; color: var(--ink-soft); line-height: 1.3; }
+.tp-date b { display: block; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tp-body { display: grid; gap: 6px; min-width: 0; }
+.tp-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tp-title { font-weight: 700; }
+.chip.channel { border-color: var(--accent); color: var(--accent); }
+.chip.safe { border-color: var(--warn); color: var(--warn); }
+.draft { display: flex; gap: 8px; align-items: flex-start; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.draft p { margin: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.draft .booking { background: color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 4px; padding: 0 4px; }
+.draft.card-msg p { font-family: "Segoe Print", "Bradley Hand", cursive; }
+button.copy { padding: 4px 10px; font-size: 12px; background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.notes { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 14px; }
+.why { margin: 0; font-size: 12px; color: var(--ink-soft); font-style: italic; }
+@media (max-width: 480px) { .tp { grid-template-columns: 1fr; } }
+.tp-body > .chip { justify-self: start; }

@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Dealer Social AI · Playground</title>
 <link rel="stylesheet" href="/playground.css">
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
 </head>
 <body>
 <main class="wrap">
@@ -59,6 +60,29 @@
     </div>
   </section>
 
+  <section class="card" id="plan-card" aria-labelledby="plan-title" hidden>
+    <div class="section-head">
+      <h2 id="plan-title">Follow-up plan</h2>
+      <span class="models">Muse Spark</span>
+    </div>
+    <p class="hint">Turns the verified facts into your follow-up schedule: day-after check-in, thank-you card, 30-day call, first service, birthday and anniversary, plus check-ins for life events. Drafted in your voice; you approve every message.</p>
+    <form id="plan-form" class="plan-form" novalidate>
+      <div class="field"><label for="plan-customer">Customer</label><input id="plan-customer" maxlength="80"></div>
+      <div class="field"><label for="plan-vehicle">Vehicle</label><input id="plan-vehicle" maxlength="80"></div>
+      <div class="field"><label for="plan-salesperson">Salesperson</label><input id="plan-salesperson" maxlength="60"></div>
+      <div class="field"><label for="plan-store">Store</label><input id="plan-store" maxlength="60" value="Demo Motors"></div>
+      <div class="field"><label for="plan-date">Delivery date</label><input id="plan-date" type="date"></div>
+      <div class="field"><label for="plan-birthday">Birthday (optional)</label><input id="plan-birthday" placeholder="MM-DD" maxlength="5" inputmode="numeric"></div>
+      <div class="row"><button id="plan-btn" type="submit">Build follow-up plan</button><span class="count" id="plan-progress" aria-live="polite"></span></div>
+    </form>
+    <p class="error" id="plan-error" role="alert" hidden></p>
+    <div id="plan-result" hidden>
+      <div class="checks" id="plan-checks"></div>
+      <ol class="timeline" id="timeline"></ol>
+      <p class="foot" id="plan-meta"></p>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="conn-title">
     <h2 id="conn-title">Connection test</h2>
     <p class="hint">Sends one short prompt to Muse Spark and shows the reply.</p>
@@ -84,8 +108,7 @@
   <section class="card muted" aria-labelledby="next-title">
     <h2 id="next-title">Coming during the hackathon</h2>
     <ul class="soon">
-      <li>Long-range check-in planner with drafts in the salesperson&rsquo;s voice</li>
-      <li>Salesperson handoff brief and warm introduction</li>
+            <li>Salesperson handoff brief and warm introduction</li>
       <li>Relationships-at-risk brief for managers</li>
       <li>Automatic privacy blur for store photos (SAM 3.1)</li>
       <li>Truckiversary posts (Muse Image)</li>

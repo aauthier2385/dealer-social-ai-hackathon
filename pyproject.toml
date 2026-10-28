@@ -16,3 +16,5 @@ ignore = ["S101", "N818"]  # assert in tests; exception names read better withou
 "tests/*" = ["S105", "S106", "S310", "E501", "N802"]
 "app/meta_client.py" = ["S310"]  # urllib is used on purpose; the base URL is forced to https://
 "app/memory.py" = ["E501"]  # long lines are prompt text, kept readable as prose
+"app/planner.py" = ["E501"]  # long lines are prompt text and message templates
+"tests/test_planner.py" = ["E501", "E231"]

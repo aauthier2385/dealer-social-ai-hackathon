@@ -147,7 +147,11 @@
     personal: "Personal",
   };
 
+  let lastMemory = null;
+
   function render(data) {
+    lastMemory = data;
+    preparePlan(data);
     $("summary").textContent = data.summary || "";
     const c = data.checks || {};
     const checks = $("checks");
@@ -259,6 +263,145 @@
     } finally {
       progress.textContent = "";
       rememberBtn.disabled = !audioBlob;
+    }
+  });
+
+  // ---------- Follow-up plan ----------
+  const planCard = $("plan-card"), planForm = $("plan-form"), planBtn = $("plan-btn");
+  const planError = $("plan-error"), planResult = $("plan-result"), planProgress = $("plan-progress");
+
+  function today() {
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function preparePlan(data) {
+    const people = data.people || [];
+    const customer = people.find((p) => p.relationship === "customer") || {};
+    const salesperson = people.find((p) => p.relationship === "salesperson") || {};
+    $("plan-customer").value = customer.name || "";
+    $("plan-vehicle").value = customer.vehicle_purchased || "";
+    $("plan-salesperson").value = salesperson.name || "";
+    if (!$("plan-date").value) $("plan-date").value = today();
+    planResult.hidden = true;
+    planError.hidden = true;
+    planCard.hidden = false;
+  }
+
+  const CHANNELS = { text: "Text", call: "Call", call_or_text: "Call or text", mail: "Mail" };
+
+  function copyButton(text) {
+    const b = el("button", "copy", "Copy");
+    b.type = "button";
+    b.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        b.textContent = "Copied";
+      } catch (e) {
+        const range = document.createRange();
+        range.selectNodeContents(b.previousSibling);
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        b.textContent = "Press Ctrl+C";
+      }
+      setTimeout(() => { b.textContent = "Copy"; }, 1600);
+    });
+    return b;
+  }
+
+  function draftBlock(text, cls) {
+    const box = el("div", "draft" + (cls ? " " + cls : ""));
+    const p = el("p");
+    text.split("{booking_link}").forEach((part, i) => {
+      if (i) p.append(el("span", "booking", "[booking link]"));
+      p.append(document.createTextNode(part));
+    });
+    box.append(p, copyButton(text));
+    return box;
+  }
+
+  function niceDate(iso) {
+    const d = new Date(iso + "T12:00:00");
+    return {
+      day: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      rest: d.toLocaleDateString(undefined, { weekday: "short", year: "numeric" }),
+    };
+  }
+
+  function renderPlan(data) {
+    const c = data.checks || {};
+    $("plan-checks").replaceChildren(
+      el("span", "check good", (c.drafted || 0) + " drafted & checked"),
+      el("span", "check" + (c.replaced_with_safe_draft ? " cut" : ""), (c.replaced_with_safe_draft || 0) + " replaced with a safe draft"),
+      el("span", "check good", (c.life_events_kept || 0) + " life-event check-ins"),
+      el("span", "check" + (c.life_events_dropped ? " cut" : ""), (c.life_events_dropped || 0) + " suggestions dropped"),
+    );
+    $("timeline").replaceChildren(...(data.touchpoints || []).map((tp) => {
+      const li = el("li", "tp");
+      const nd = niceDate(tp.date);
+      const date = el("div", "tp-date");
+      date.append(el("b", null, nd.day), document.createTextNode(nd.rest));
+      const body = el("div", "tp-body");
+      const head = el("div", "tp-head");
+      head.append(el("span", "tp-title", tp.title), el("span", "chip channel", CHANNELS[tp.channel] || tp.channel));
+      if (tp.kind === "life_event") head.append(el("span", "chip timing", "Life event"));
+      if ((tp.safe_draft_used || []).length) head.append(el("span", "chip safe", "Safe draft"));
+      body.append(head);
+      if (tp.card) body.append(draftBlock(tp.card, "card-msg"));
+      if (tp.text) body.append(draftBlock(tp.text));
+      if ((tp.call_notes || []).length) {
+        const ul = el("ul", "notes");
+        tp.call_notes.forEach((n) => ul.append(el("li", null, n)));
+        body.append(el("span", "chip", "Call notes"), ul);
+      }
+      if ((tp.uses_facts || []).length) {
+        const uses = el("div", "tp-head");
+        tp.uses_facts.forEach((f) => uses.append(el("span", "chip", f.id + " · " + f.fact)));
+        body.append(uses);
+      }
+      if (tp.why) body.append(el("p", "why", tp.why));
+      li.append(date, body);
+      return li;
+    }));
+    const u = data.usage || {};
+    $("plan-meta").textContent = (data.latency_ms / 1000).toFixed(1) + " s · " + (u.total_tokens || 0) +
+      " tokens (" + (u.reasoning_tokens || 0) + " reasoning) · " + (data.model || "");
+    planResult.hidden = false;
+  }
+
+  planForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    planError.hidden = true;
+    if (!token()) { show(planError, "Paste the service token first."); return; }
+    if (!lastMemory) return;
+    const body = {
+      customer_name: $("plan-customer").value.trim(),
+      vehicle: $("plan-vehicle").value.trim(),
+      salesperson_name: $("plan-salesperson").value.trim(),
+      store_name: $("plan-store").value.trim(),
+      delivery_date: $("plan-date").value,
+      birthday: $("plan-birthday").value.trim(),
+      facts: (lastMemory.facts || []).map((f) => ({
+        id: f.id, about: f.about, category: f.category, fact: f.fact, timing: f.timing, certainty: f.certainty,
+      })),
+    };
+    if (!body.customer_name || !body.salesperson_name) {
+      show(planError, "Fill in the customer and salesperson names."); return;
+    }
+    planBtn.disabled = true;
+    planProgress.textContent = "Planning and checking every draft…";
+    try {
+      const response = await fetch("/v1/plan/touchpoints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token() },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) { planResult.hidden = true; show(planError, await readError(response)); return; }
+      renderPlan(await response.json());
+    } catch (e) {
+      show(planError, "Could not reach the service.");
+    } finally {
+      planBtn.disabled = false;
+      planProgress.textContent = "";
     }
   });
 })();
