@@ -20,14 +20,51 @@
     </div>
   </header>
 
+  <section class="card token-card" aria-labelledby="token-label">
+    <label id="token-label" for="token">Service token</label>
+    <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste SERVICE_TOKEN (kept in this tab only)">
+  </section>
+
+  <section class="card" aria-labelledby="memory-title">
+    <div class="section-head">
+      <h2 id="memory-title">Relationship memory</h2>
+      <span class="models">Muse Voice Transcribe &middot; Muse Spark</span>
+    </div>
+    <p class="hint">Record or upload a voice note about a customer. The agent remembers the relationship details, links every fact to the exact words it came from, double-checks itself, and withholds anything sensitive.</p>
+    <div class="row gap">
+      <button id="record" type="button" class="secondary">&#9679; Record</button>
+      <label class="file-btn" for="file">Choose recording&hellip;</label>
+      <input id="file" type="file" accept="audio/*,.m4a,.mp3,.wav,.webm">
+      <span class="file-name" id="file-name">No recording yet</span>
+    </div>
+    <div class="row">
+      <button id="remember" type="button" disabled>Remember this customer</button>
+      <span class="count" id="progress" aria-live="polite"></span>
+    </div>
+    <p class="error" id="memory-error" role="alert" hidden></p>
+
+    <div id="memory-result" hidden>
+      <p class="summary" id="summary"></p>
+      <div class="checks" id="checks" aria-label="Verification steps"></div>
+      <h3>People</h3>
+      <ul class="people" id="people"></ul>
+      <h3>What to remember</h3>
+      <ul class="facts" id="facts"></ul>
+      <div class="withheld" id="withheld" hidden></div>
+      <details class="transcript-box">
+        <summary>Transcript <span class="count" id="transcript-meta"></span></summary>
+        <ol class="transcript" id="transcript"></ol>
+      </details>
+      <p class="foot" id="memory-meta"></p>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="conn-title">
-    <h2 id="conn-title">1. Connection test</h2>
-    <p class="hint">Sends one short prompt to Muse Spark and shows the reply. Requires the service token.</p>
+    <h2 id="conn-title">Connection test</h2>
+    <p class="hint">Sends one short prompt to Muse Spark and shows the reply.</p>
     <form id="ping-form" novalidate>
-      <label for="token">Service token</label>
-      <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste SERVICE_TOKEN (kept in this tab only)">
       <label for="prompt">Prompt</label>
-      <textarea id="prompt" name="prompt" rows="3" maxlength="500">Say hello to the sales team at Demo Motors Ford.</textarea>
+      <textarea id="prompt" name="prompt" rows="2" maxlength="500">Say hello to the sales team at Demo Motors Ford.</textarea>
       <div class="row">
         <button id="send" type="submit">Send to Muse Spark</button>
         <span class="count" id="count">0 / 500</span>
@@ -47,7 +84,6 @@
   <section class="card muted" aria-labelledby="next-title">
     <h2 id="next-title">Coming during the hackathon</h2>
     <ul class="soon">
-      <li>Voice note &rarr; relationship memory, every fact linked to its source sentence</li>
       <li>Long-range check-in planner with drafts in the salesperson&rsquo;s voice</li>
       <li>Salesperson handoff brief and warm introduction</li>
       <li>Relationships-at-risk brief for managers</li>
@@ -56,7 +92,7 @@
     </ul>
   </section>
 
-  <footer class="foot">Demo uses fictional data only. Nothing you type here is stored or logged.</footer>
+  <footer class="foot">Demo uses fictional data only. Nothing you send here is stored or logged.</footer>
 </main>
 <script src="/playground.js"></script>
 </body>

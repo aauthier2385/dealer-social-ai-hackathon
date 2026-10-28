@@ -14,11 +14,18 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from app import __version__
+from app import __version__, audio, memory
 from app.config import Settings, load_settings
 from app.meta_client import MetaClient, MetaError, Transport
 from app.ratelimit import RateLimiter
-from app.security import BadRequest, RequestTooLarge, client_key, read_json, token_ok
+from app.security import (
+    BadRequest,
+    RequestTooLarge,
+    client_key,
+    read_bytes,
+    read_json,
+    token_ok,
+)
 
 log = logging.getLogger("dsai")
 
@@ -64,6 +71,20 @@ class SecurityHeaders:
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
+
+
+META_MESSAGES = {
+    "ai_disabled": "Meta AI is turned off (META_AI_ENABLED=false).",
+    "ai_busy": "The AI is busy with other requests. Try again in a few seconds.",
+    "ai_unavailable": "The AI service is temporarily unavailable. Try again shortly.",
+    "ai_bad_response": "The AI returned something unexpected. Try again.",
+    "invalid_input": "That request could not be sent to the AI.",
+}
+AUDIO_TYPES = {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"}
+
+
+def _meta_error(exc: MetaError) -> JSONResponse:
+    return _error(exc.http_status, exc.code, META_MESSAGES[exc.code], exc.retry_after)
 
 
 def _error(status: int, code: str, message: str, retry_after: int | None = None) -> JSONResponse:
@@ -133,17 +154,11 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
                 [
                     {"role": "system", "content": PING_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt.strip()},
-                ]
+                ],
+                reasoning_effort="minimal",
             )
         except MetaError as exc:
-            messages = {
-                "ai_disabled": "Meta AI is turned off (META_AI_ENABLED=false).",
-                "ai_busy": "The AI is busy with other requests. Try again in a few seconds.",
-                "ai_unavailable": "The AI service is temporarily unavailable. Try again shortly.",
-                "ai_bad_response": "The AI returned something unexpected. Try again.",
-                "invalid_input": "That request could not be sent to the AI.",
-            }
-            return _error(exc.http_status, exc.code, messages[exc.code], exc.retry_after)
+            return _meta_error(exc)
         return JSONResponse(
             {
                 "reply": result.text,
@@ -153,6 +168,38 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
             },
             headers={"Cache-Control": "no-store"},
         )
+
+    async def voice_note_memory(request: Request) -> Response:
+        """Feature 1: upload a voice note (WAV), get relationship facts tied to their sources."""
+        if not token_ok(request, settings.service_token):
+            return _error(401, "unauthorized", "Missing or wrong service token.")
+        content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        if content_type not in AUDIO_TYPES:
+            return _error(415, "unsupported_media", "Send the voice note as audio/wav.")
+        allowed, wait = limiter.allow_all(
+            [
+                ("voice-" + client_key(request), settings.voice_per_client_per_minute, 60),
+                ("voice-global-day", settings.voice_global_per_day, 86400),
+                ("global-minute", settings.global_per_minute, 60),
+                ("global-day", settings.global_per_day, 86400),
+            ]
+        )
+        if not allowed:
+            return _error(429, "rate_limited", "Too many voice notes. Try again shortly.", wait)
+        try:
+            wav = await read_bytes(request, audio.MAX_BYTES)
+            info = audio.check_wav(wav)
+        except RequestTooLarge:
+            return _error(413, "too_large", "The recording is too long. Keep it under 5 minutes.")
+        except audio.AudioError as exc:
+            return _error(400, "invalid_audio", str(exc))
+        try:
+            result = await memory.remember(meta, wav, info.seconds)
+        except memory.NoSpeech:
+            return _error(422, "no_speech", "No speech was found in the recording.")
+        except MetaError as exc:
+            return _meta_error(exc)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     def static(body: bytes, media_type: str):
         async def handler(request: Request) -> Response:
@@ -167,6 +214,7 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
     routes = [
         Route("/health", health, methods=["GET"]),
         Route("/v1/ping-model", ping_model, methods=["POST"]),
+        Route("/v1/memory/voice-note", voice_note_memory, methods=["POST"]),
     ]
     if settings.playground_enabled:
         routes += [

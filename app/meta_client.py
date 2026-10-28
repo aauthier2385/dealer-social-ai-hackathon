@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -25,7 +26,8 @@ log = logging.getLogger("dsai.meta")
 
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_PROMPT_CHARS = 20_000
-TIMEOUT_SECONDS = 30.0
+TIMEOUT_SECONDS = 45.0
+TRANSCRIBE_TIMEOUT_SECONDS = 120.0
 ALLOWED_ROLES = {"system", "user", "assistant"}
 
 # (url, headers, body, timeout_seconds, max_bytes) -> (status, headers, body)
@@ -120,6 +122,10 @@ class MetaClient:
     def text_model(self) -> str:
         return self._settings.text_model
 
+    @property
+    def voice_model(self) -> str:
+        return self._settings.voice_model
+
     def __repr__(self) -> str:
         return f"MetaClient(enabled={self.enabled}, model={self.text_model!r})"
 
@@ -138,55 +144,145 @@ class MetaClient:
         if total > MAX_PROMPT_CHARS:
             raise MetaInputError("prompt too long")
 
-    async def chat(self, messages: list[dict]) -> ChatResult:
+    async def _send(
+        self, event: str, path: str, body: bytes, content_type: str, timeout: float
+    ) -> dict:
+        """POST to the Meta Model API and return parsed JSON. Logs only event, status, timing."""
         if not self.enabled:
             raise MetaDisabled()
-        self._validate(messages)
-
         # No awaits between the check and the increment, so this is safe on one event loop.
         if self._active >= self._settings.max_concurrency:
             raise MetaBusy("too many calls at once", retry_after=5)
         self._active += 1
         started = time.monotonic()
         try:
-            url = f"{self._settings.meta_base_url}/chat/completions"
+            url = f"{self._settings.meta_base_url}{path}"
             headers = {
                 "Authorization": f"Bearer {self._settings.meta_api_key}",
-                "Content-Type": "application/json",
+                "Content-Type": content_type,
                 "Accept": "application/json",
-                "User-Agent": "dealer-social-ai/0.1",
+                "User-Agent": "dealer-social-ai/0.2",
             }
-            body = json.dumps({"model": self._settings.text_model, "messages": messages}).encode()
             try:
                 status, response_headers, data = await anyio.to_thread.run_sync(
-                    self._transport, url, headers, body, TIMEOUT_SECONDS, MAX_RESPONSE_BYTES
+                    self._transport, url, headers, body, timeout, MAX_RESPONSE_BYTES
                 )
             except MetaUnavailable:
                 waited = int((time.monotonic() - started) * 1000)
-                log.warning("meta_chat network_error latency_ms=%s (timeout or no route)", waited)
+                log.warning("%s network_error latency_ms=%s (timeout or no route)", event, waited)
                 raise
         finally:
             self._active -= 1
         latency_ms = int((time.monotonic() - started) * 1000)
-        log.info("meta_chat status=%s latency_ms=%s", status, latency_ms)
+        log.info("%s status=%s latency_ms=%s", event, status, latency_ms)
 
         if status == 429 or status >= 500:
             raise MetaUnavailable("upstream busy", retry_after=_retry_after(response_headers))
         if status in (401, 403):
             log.error("meta_auth_failed status=%s (check MODEL_API_KEY)", status)
             raise MetaUnavailable("upstream auth")
+        if status == 413:
+            raise MetaInputError("upstream says the upload is too large")
         if status != 200:
             raise MetaBadResponse(f"upstream status {status}")
         if len(data) > MAX_RESPONSE_BYTES:
             raise MetaBadResponse("response too large")
         try:
             payload = json.loads(data)
+        except ValueError as exc:
+            raise MetaBadResponse("response was not JSON") from exc
+        if not isinstance(payload, dict):
+            raise MetaBadResponse("unexpected response shape")
+        payload["_latency_ms"] = latency_ms
+        return payload
+
+    async def chat(
+        self,
+        messages: list[dict],
+        *,
+        schema: dict | None = None,
+        schema_name: str = "result",
+        reasoning_effort: str | None = None,
+    ) -> ChatResult:
+        """Muse Spark chat completion, optionally constrained to a JSON schema."""
+        self._validate(messages)
+        request: dict = {"model": self._settings.text_model, "messages": messages}
+        if schema is not None:
+            request["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": schema_name, "schema": schema},
+            }
+        effort = reasoning_effort or self._settings.reasoning_effort
+        if effort:
+            request["reasoning_effort"] = effort
+        payload = await self._send(
+            "meta_chat",
+            "/chat/completions",
+            json.dumps(request).encode(),
+            "application/json",
+            TIMEOUT_SECONDS,
+        )
+        try:
             text = payload["choices"][0]["message"]["content"]
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
+        except (KeyError, IndexError, TypeError) as exc:
             raise MetaBadResponse("unexpected response shape") from exc
         if not isinstance(text, str):
             raise MetaBadResponse("reply was not text")
-        usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
-        usage = {k: v for k, v in usage.items() if isinstance(v, int)}
         model = payload.get("model") if isinstance(payload.get("model"), str) else self.text_model
-        return ChatResult(text=text, model=model, latency_ms=latency_ms, usage=usage)
+        return ChatResult(
+            text=text, model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
+        )
+
+    async def chat_json(self, messages: list[dict], schema: dict, schema_name: str, **kw):
+        """Chat constrained to `schema`; returns (parsed_dict, ChatResult)."""
+        result = await self.chat(messages, schema=schema, schema_name=schema_name, **kw)
+        try:
+            data = json.loads(result.text)
+        except ValueError as exc:
+            raise MetaBadResponse("structured output was not JSON") from exc
+        if not isinstance(data, dict):
+            raise MetaBadResponse("structured output was not an object")
+        return data, result
+
+    async def transcribe(self, wav: bytes, mode: str = "DIARIZATION") -> dict:
+        """Muse Voice Transcribe, one-shot upload of a mono 16-bit WAV.
+
+        Returns {"transcript", "turns": [...], "audioDurationMs", "_latency_ms"}.
+        """
+        request = {"mode": mode, "model": self._settings.voice_model, "audioEncoding": "WAV"}
+        boundary = "dsai-" + secrets.token_hex(16)
+        body = b"".join(
+            [
+                f"--{boundary}\r\n".encode(),
+                b'Content-Disposition: form-data; name="request"\r\n',
+                b"Content-Type: application/json\r\n\r\n",
+                json.dumps(request).encode(),
+                f"\r\n--{boundary}\r\n".encode(),
+                b'Content-Disposition: form-data; name="audio"; filename="voice-note.wav"\r\n',
+                b"Content-Type: audio/wav\r\n\r\n",
+                wav,
+                f"\r\n--{boundary}--\r\n".encode(),
+            ]
+        )
+        payload = await self._send(
+            "meta_transcribe",
+            "/asr/transcribe",
+            body,
+            f"multipart/form-data; boundary={boundary}",
+            TRANSCRIBE_TIMEOUT_SECONDS,
+        )
+        transcript = payload.get("transcript")
+        turns = payload.get("turns")
+        if not isinstance(transcript, str) and not isinstance(turns, list):
+            raise MetaBadResponse("transcription had no text")
+        return payload
+
+
+def _usage(payload: dict) -> dict:
+    """Keep integer token counts, including reasoning tokens (they are billed as output)."""
+    raw = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+    usage = {k: v for k, v in raw.items() if isinstance(v, int)}
+    details = raw.get("completion_tokens_details")
+    if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
+        usage["reasoning_tokens"] = details["reasoning_tokens"]
+    return usage

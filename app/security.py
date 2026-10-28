@@ -37,10 +37,7 @@ def client_key(request: Request) -> str:
     return f"ip:{host}"
 
 
-async def read_json(request: Request, limit: int) -> dict:
-    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
-    if content_type != "application/json":
-        raise BadRequest("Send JSON with Content-Type: application/json")
+async def read_bytes(request: Request, limit: int) -> bytes:
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > limit:
         raise RequestTooLarge()
@@ -49,6 +46,14 @@ async def read_json(request: Request, limit: int) -> dict:
         body += chunk
         if len(body) > limit:
             raise RequestTooLarge()
+    return bytes(body)
+
+
+async def read_json(request: Request, limit: int) -> dict:
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise BadRequest("Send JSON with Content-Type: application/json")
+    body = await read_bytes(request, limit)
     try:
         data = json.loads(body)
     except ValueError as exc:

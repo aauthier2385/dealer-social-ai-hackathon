@@ -71,7 +71,8 @@ class PingTests(unittest.TestCase):
         self.assertEqual(sent["json"]["model"], "muse-spark-1.3")
         self.assertEqual(sent["json"]["messages"][0]["role"], "system")
         self.assertEqual(sent["json"]["messages"][1]["content"], "Say hi to the sales team")
-        self.assertLessEqual(sent["timeout"], 30)
+        self.assertLessEqual(sent["timeout"], 45)
+        self.assertEqual(sent["json"]["reasoning_effort"], "minimal")  # cheap connection test
 
     def test_rejects_bad_input_without_calling_meta(self):
         meta = FakeMeta()

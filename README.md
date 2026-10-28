@@ -24,12 +24,33 @@ visits. This service gives it a memory.
 | | Feature | Meta models | Status |
 |---|---|---|---|
 | 0 | Service foundation: auth, credit protection, safe Meta client, test page | Muse Spark | ✅ Built |
-| 1 | **Relationship memory**: voice note → relationship facts, each linked to the exact sentence it came from | Voice Transcribe, Muse Spark | Planned |
+| 1 | **Relationship memory**: voice note → relationship facts, each linked to the exact sentence it came from | Voice Transcribe, Muse Spark | ✅ Built |
 | 2 | **Check-in planner**: personal check-ins months or years out, drafted in the salesperson's voice; a human approves every message | Muse Spark | Planned |
 | 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark | Planned |
 | 4 | **Relationships at risk**: a manager brief of customers who need attention | Muse Spark | Planned |
 | 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 | Planned |
 | 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image | Planned |
+
+## How relationship memory stays honest
+
+Every step can only remove facts, never add them:
+
+1. **Muse Voice Transcribe** turns the voice note into speaker-labelled text (diarization).
+2. The transcript is split into numbered sentences `[S1]`, `[S2]`, ...
+3. **Muse Spark** extracts relationship facts with **structured output** (a strict JSON schema).
+   Each fact must cite one sentence and copy an exact quote from it.
+4. **Code verifies every quote** really appears in the transcript. Anything that does not is
+   dropped, and a wrong sentence number is corrected to the real source.
+5. A **privacy screen** withholds sensitive details (health, money and deal numbers, religion,
+   politics, legal trouble, immigration, relationship trouble). It runs in code as well as in the
+   model, so one model mistake cannot leak a detail.
+6. A second **Muse Spark pass acts as the judge**: it re-checks each fact against its sentence and
+   drops anything not clearly stated. A missing verdict counts as a rejection (fail closed). The
+   judge can lower certainty ("not sure") but never raise it.
+7. Sentences behind withheld details are **redacted** from the transcript that is returned.
+
+Phone recordings (.m4a, .mp3, .webm) are converted to 16 kHz mono WAV **in the browser**, so the
+server needs no audio software and never receives anything but the format Meta expects.
 
 ## Architecture
 
@@ -57,6 +78,8 @@ Meta Model API  (Muse Spark · Voice Transcribe · SAM 3.1 · Muse Image)
   key cannot be forwarded), standard-library HTTPS with no third-party HTTP client.
 - **Nothing sensitive is logged**: only event names, status codes and timings. A test enforces
   this.
+- **Reasoning effort is set per task** (`minimal` for the connection test, `low` for extraction
+  and judging) so thinking tokens do not waste credits.
 - **Contributor model variants are refused** at startup, so customer content is never offered for
   model training.
 - **Strict browser security headers**, including a Content-Security-Policy with no inline scripts.
@@ -67,6 +90,7 @@ Meta Model API  (Muse Spark · Voice Transcribe · SAM 3.1 · Muse Image)
 |---|---|---|---|
 | GET | `/health` | none | Liveness check for Render |
 | POST | `/v1/ping-model` | Bearer token | Sends a short prompt to Muse Spark and returns the reply |
+| POST | `/v1/memory/voice-note` | Bearer token | Body: a mono 16-bit WAV (16/24 kHz, up to 5 min). Returns people, verified facts with sources, withheld details and a redacted transcript |
 | GET | `/playground` | none (page) | Browser test page; the token is typed in and kept in page memory only |
 
 ```bash
@@ -110,3 +134,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Date | Built |
 |---|---|
 | Oct 27 | Service foundation: config, token auth, rate and concurrency limits, safe Meta client, `/health`, `/v1/ping-model`, `/playground`, 28 tests, CI |
+| Oct 27 | Feature 1, relationship memory: Voice Transcribe (diarization), structured extraction, quote verification in code, privacy screen and redaction, judge pass, browser audio conversion and recording, playground results view, 49 tests |

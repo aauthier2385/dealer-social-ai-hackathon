@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 DEFAULT_BASE_URL = "https://api.meta.ai/v1"
 DEFAULT_TEXT_MODEL = "muse-spark-1.3"
+DEFAULT_VOICE_MODEL = "muse-voice-transcribe-1.0"
+REASONING_EFFORTS = ("minimal", "low", "medium", "high")
 MIN_TOKEN_LENGTH = 32
 
 
@@ -25,10 +27,14 @@ class Settings:
     meta_api_key: str
     meta_base_url: str
     text_model: str
+    voice_model: str
+    reasoning_effort: str
     max_concurrency: int
     per_client_per_minute: int
     global_per_minute: int
     global_per_day: int
+    voice_per_client_per_minute: int
+    voice_global_per_day: int
     playground_enabled: bool
 
     def __repr__(self) -> str:  # never format key material
@@ -62,6 +68,16 @@ def _int(env: Mapping[str, str], name: str, default: int, low: int, high: int) -
     return value
 
 
+def _model(env: Mapping[str, str], name: str, default: str) -> str:
+    model = env.get(name, default).strip()
+    if not model:
+        raise ConfigError(f"{name} must not be empty")
+    if "contributor" in model.lower():
+        # Contributor variants let Meta train on submitted content. Customer data never goes there.
+        raise ConfigError("Contributor model variants are not allowed for customer data")
+    return model
+
+
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
 
@@ -81,12 +97,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if not base_url.startswith("https://"):
         raise ConfigError("META_BASE_URL must use https://")
 
-    model = env.get("META_TEXT_MODEL", DEFAULT_TEXT_MODEL).strip()
-    if not model:
-        raise ConfigError("META_TEXT_MODEL must not be empty")
-    if "contributor" in model.lower():
-        # Contributor variants let Meta train on submitted content. Customer data never goes there.
-        raise ConfigError("Contributor model variants are not allowed for customer data")
+    model = _model(env, "META_TEXT_MODEL", DEFAULT_TEXT_MODEL)
+    voice_model = _model(env, "META_VOICE_MODEL", DEFAULT_VOICE_MODEL)
+
+    effort = env.get("META_REASONING_EFFORT", "low").strip().lower()
+    if effort not in REASONING_EFFORTS:
+        raise ConfigError(f"META_REASONING_EFFORT must be one of {', '.join(REASONING_EFFORTS)}")
 
     return Settings(
         service_token=token,
@@ -94,9 +110,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         meta_api_key=key,
         meta_base_url=base_url,
         text_model=model,
+        voice_model=voice_model,
+        reasoning_effort=effort,
         max_concurrency=_int(env, "MAX_CONCURRENT_META_CALLS", 4, 1, 32),
         per_client_per_minute=_int(env, "RATE_LIMIT_PER_CLIENT_PER_MINUTE", 20, 1, 1000),
         global_per_minute=_int(env, "RATE_LIMIT_GLOBAL_PER_MINUTE", 60, 1, 10000),
         global_per_day=_int(env, "RATE_LIMIT_GLOBAL_PER_DAY", 1000, 1, 1000000),
+        voice_per_client_per_minute=_int(env, "VOICE_LIMIT_PER_CLIENT_PER_MINUTE", 6, 1, 100),
+        voice_global_per_day=_int(env, "VOICE_LIMIT_GLOBAL_PER_DAY", 300, 1, 100000),
         playground_enabled=_bool(env, "PLAYGROUND_ENABLED", True),
     )
