@@ -82,6 +82,13 @@ h3 { margin: 8px 0 0; font-size: 13px; letter-spacing: .06em; text-transform: up
 .people { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .person { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 14px; min-width: 0; }
 .person b { display: block; }
+.name-btn { display: block; padding: 0; background: none; border: 0; color: var(--ink); font: 700 14px var(--font); text-align: left; cursor: pointer; text-decoration: underline dotted var(--ink-soft); text-underline-offset: 3px; }
+.name-btn::after { content: " \270E"; font-weight: 400; color: var(--ink-soft); }
+.name-edit { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.name-input { width: 14ch; padding: 4px 8px; font: 14px var(--font); }
+.name-error { font-size: 12px; color: var(--bad); }
+h3 .count { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.person .heard { display: block; font-size: 11px; color: var(--warn); }
 .person span { color: var(--ink-soft); font-size: 13px; }
 .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .fact { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--bg); border-radius: 0 8px 8px 0; display: grid; gap: 4px; min-width: 0; }

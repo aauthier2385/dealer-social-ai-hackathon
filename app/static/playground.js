@@ -149,9 +149,9 @@
 
   let lastMemory = null;
 
-  function render(data) {
+  function render(data, rerender) {
     lastMemory = data;
-    preparePlan(data);
+    if (!rerender) preparePlan(data);
     $("summary").textContent = data.summary || "";
     const c = data.checks || {};
     const checks = $("checks");
@@ -166,12 +166,18 @@
     const people = $("people");
     people.replaceChildren(...(data.people || []).map((p) => {
       const li = el("li", "person");
-      li.append(el("b", null, p.name));
+      const nameBtn = el("button", "name-btn", p.name);
+      nameBtn.type = "button";
+      nameBtn.title = "Fix this name";
+      nameBtn.setAttribute("aria-label", "Fix the name " + p.name);
+      nameBtn.addEventListener("click", () => editName(li, p.name));
+      li.append(nameBtn);
       const bits = [p.relationship.replace("_", " ")];
       if (p.related_to && (p.relationship === "family_member" || p.relationship === "pet")) bits.push("of " + p.related_to);
       if (p.vehicle_purchased) bits.push("bought " + p.vehicle_purchased);
       if (p.vehicle_traded) bits.push("traded " + p.vehicle_traded);
       li.append(el("span", null, bits.join(" · ")));
+      if (p.heard_as) li.append(el("span", "heard", "Fixed · heard as “" + p.heard_as + "”"));
       return li;
     }));
 
@@ -222,6 +228,67 @@
       " s · total " + total.toFixed(1) + " s · " + (u.total_tokens || 0) + " tokens (" +
       (u.reasoning_tokens || 0) + " reasoning)";
     memResult.hidden = false;
+  }
+
+  // ---------- Name corrections ----------
+  // Transcription can mishear short names ("Bell" heard as "Bill"). The salesperson fixes the name
+  // once and it carries into the people, the facts, the summary and the follow-up plan. Quotes and
+  // the transcript stay exactly as heard, so every fact still points at its real source.
+  const NAME_OK = /^[A-Za-z][A-Za-z .'’-]{0,59}$/;
+
+  function swapName(text, from, to) {
+    if (!text || !from || from === to) return text;
+    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return text.replace(new RegExp("(^|[^A-Za-z])" + esc + "(?![A-Za-z])", "g"), (m, pre) => pre + to);
+  }
+
+  function renameEverywhere(from, to) {
+    const firstFrom = from.split(" ")[0], firstTo = to.split(" ")[0];
+    const swap = (t) => {
+      let out = swapName(t, from, to);
+      if (firstFrom !== from && firstFrom !== firstTo) out = swapName(out, firstFrom, firstTo);
+      return out;
+    };
+    const m = lastMemory;
+    (m.people || []).forEach((p) => {
+      if (p.name === from) { p.heard_as = p.heard_as || from; p.name = to; }
+      p.related_to = swap(p.related_to);
+    });
+    (m.facts || []).forEach((f) => { f.about = swap(f.about); f.fact = swap(f.fact); });
+    m.summary = swap(m.summary);
+    ["plan-customer", "plan-salesperson"].forEach((id) => { $(id).value = swap($(id).value); });
+    $("plan-result").hidden = true; // an old plan would still use the misheard name
+  }
+
+  function editName(li, current) {
+    const input = el("input", "name-input");
+    input.value = current;
+    input.maxLength = 60;
+    input.setAttribute("aria-label", "Correct name for " + current);
+    const save = el("button", "copy", "Save");
+    const cancel = el("button", "copy", "Cancel");
+    save.type = cancel.type = "button";
+    const note = el("span", "name-error");
+    const box = el("div", "name-edit");
+    box.append(input, save, cancel, note);
+    li.replaceChildren(box);
+    input.focus();
+    input.select();
+    const done = () => render(lastMemory, true);
+    const commit = () => {
+      const name = input.value.replace(/\s+/g, " ").trim();
+      if (name === current) { done(); return; }
+      if (!NAME_OK.test(name)) { note.textContent = "Letters, spaces, - . ' only"; return; }
+      if ((lastMemory.people || []).some((p) => p.name === name)) { note.textContent = "Someone already has that name"; return; }
+      renameEverywhere(current, name);
+      done();
+    };
+    save.addEventListener("click", commit);
+    cancel.addEventListener("click", done);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      if (e.key === "Escape") done();
+    });
   }
 
   function flash(id) {

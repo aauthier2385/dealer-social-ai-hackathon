@@ -49,6 +49,9 @@ Every step can only remove facts, never add them:
    not clearly stated. It also writes the summary, from verified facts only. A missing verdict counts as a rejection (fail closed). The
    judge can lower certainty ("not sure") but never raise it.
 7. Sentences behind withheld details are **redacted** from the transcript that is returned.
+8. **The salesperson has the last word on names.** Transcription can mishear a short name ("Bell"
+   heard as "Bill"). Tapping a name fixes it in the people, facts, summary and follow-up plan, while
+   the quotes and transcript stay exactly as heard, so every fact still points at its real source.
 
 Phone recordings (.m4a, .mp3, .webm) are converted to 16 kHz mono WAV **in the browser**, so the
 server needs no audio software and never receives anything but the format Meta expects.
@@ -165,3 +168,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Per-salesperson texting voice: optional voice samples with customer names swapped out, a check that drafts never borrow a sample customer, a texting-style box in the playground; extraction no longer turns a pronoun into a fact, 95 tests |
 | Oct 27 | Voice variety: copy the salesperson's style without repeating whole sample sentences, signature phrases in at most two messages, thank-you cards written as cards, 96 tests |
 | Oct 27 | Fact tags checked in code: a touchpoint only lists the facts its draft really mentions, 99 tests |
+| Oct 27 | Name corrections: tap a misheard name to fix it everywhere it is used (quotes stay as heard), checked in the browser on desktop and phone |
