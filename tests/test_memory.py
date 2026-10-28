@@ -374,3 +374,58 @@ class UnitTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SummaryAndDedupeTests(unittest.TestCase):
+    """Regression tests from the first real run (Oct 27): a co-signing detail leaked via summary."""
+
+    def test_judge_summary_is_used_when_clean(self):
+        def judge(candidates):
+            out = judge_all_supported(candidates)
+            out["summary"] = "Mike bought a blue F-150; Emma turns 16 in March."
+            return out
+
+        body = upload(create_app(settings(), FakeMetaRouter(judge=judge)), make_wav()).json()
+        self.assertEqual(body["summary"], "Mike bought a blue F-150; Emma turns 16 in March.")
+
+    def test_summary_mentioning_withheld_money_detail_is_replaced(self):
+        def judge(candidates):
+            out = judge_all_supported(candidates)
+            out["summary"] = "Mike bought the F-150 with his wife co-signing after a credit issue."
+            return out
+
+        body = upload(create_app(settings(), FakeMetaRouter(judge=judge)), make_wav()).json()
+        self.assertNotIn("co-sign", body["summary"].lower())
+        self.assertEqual(
+            body["summary"], "Mike Carter bought a blue F-150 and traded a 2018 Silverado."
+        )
+
+    def test_extraction_summary_is_never_shown(self):
+        extraction = dict(EXTRACTION, summary="LEAKED wife co-signed the loan")
+        body = upload(
+            create_app(settings(), FakeMetaRouter(extraction=extraction)), make_wav()
+        ).json()
+        self.assertNotIn("LEAKED", json.dumps(body))
+
+    def test_cosigning_is_treated_as_financial(self):
+        for text in ["his wife is co-signing", "she cosigned for him", "the credit application"]:
+            self.assertEqual(memory.sensitive_type(text), "financial", text)
+
+    def test_withheld_counts_each_sentence_once(self):
+        extraction = dict(EXTRACTION)
+        extraction["facts"] = EXTRACTION["facts"] + [
+            fact("Mike Carter", "sensitive", "health detail", "S4", "in and out of the hospital")
+        ]
+        body = upload(
+            create_app(settings(), FakeMetaRouter(extraction=extraction)), make_wav()
+        ).json()
+        self.assertEqual(sorted(w["source_id"] for w in body["withheld"]), ["S4", "S5"])
+        self.assertEqual(body["checks"]["withheld"], 2)
+
+
+class SeverityOrderTests(unittest.TestCase):
+    def test_most_serious_category_wins(self):
+        # From the Oct 27 real run: one sentence held both a co-signer and a DUI.
+        text = "his wife cosigned with him and his daughter went to jail for a DUI"
+        self.assertEqual(memory.sensitive_type(text), "legal")
+        self.assertEqual(memory.sensitive_type("cosigned after his surgery"), "health")

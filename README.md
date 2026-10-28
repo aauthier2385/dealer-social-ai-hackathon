@@ -135,3 +135,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 |---|---|
 | Oct 27 | Service foundation: config, token auth, rate and concurrency limits, safe Meta client, `/health`, `/v1/ping-model`, `/playground`, 28 tests, CI |
 | Oct 27 | Feature 1, relationship memory: Voice Transcribe (diarization), structured extraction, quote verification in code, privacy screen and redaction, judge pass, browser audio conversion and recording, playground results view, 49 tests |
+| Oct 27 | First real run fixes: summary now written by the judge from verified facts only (a co-signing detail had leaked through the summary), co-signing and credit applications added to the privacy screen, one withheld entry per sentence, 54 tests |

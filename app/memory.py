@@ -50,19 +50,20 @@ SENSITIVE_TYPES = [
 
 # Backup screen in code, so a model mistake cannot leak a sensitive detail. It errs on the side of
 # withholding: a false alarm costs one lost fact, a miss costs a customer's trust.
-_SENSITIVE_PATTERNS = {
+_SENSITIVE_PATTERNS = {  # most serious first: a sentence gets the label of its first match
+    "legal": r"\b(arrest\w*|jail|prison|dui|dwi|court|lawsuit|probation|lawyer|attorney)\b",
     "health": r"\b(hospital\w*|sick|illness|ill|cancer|surger(y|ies)|diagnos\w*|medication\w*|"
     r"medicine|chemo\w*|therap(y|ist)|rehab|disease|diabet\w*|pregnan\w*|disab\w*|injur\w*|"
     r"mental health|depress\w*|anxiety|passed away|funeral|heart attack|stroke)\b",
+    "immigration": r"\b(immigra\w*|visa|green card|deport\w*|citizenship)\b",
+    "relationship": r"\b(divorc\w*|separated|affair|custody)\b",
+    "religion": r"\b(church|mosque|synagogue|religio\w*|pray\w*|bible)\b",
+    "politics": r"\b(democrat\w*|republican\w*|election|politic\w*|voted|voting)\b",
     "financial": r"(\$\s?\d|\b\d[\d,]*\s?(dollars|bucks|grand|k)\b|\b\d{2,}\s?(a|per)\s?month\b|"
     r"\b(credit( score)?|bankrupt\w*|repo(ssess\w*)?|debt|loans?|apr|interest rate|"
     r"down payment|payments?|income|salary|paycheck|financ\w*|negative equity|upside down|"
+    r"co-?sign\w*|credit app\w*|"
     r"owe[sd]?|behind on|money)\b)",
-    "legal": r"\b(arrest\w*|jail|prison|dui|dwi|court|lawsuit|probation|lawyer|attorney)\b",
-    "religion": r"\b(church|mosque|synagogue|religio\w*|pray\w*|bible)\b",
-    "politics": r"\b(democrat\w*|republican\w*|election|politic\w*|voted|voting)\b",
-    "immigration": r"\b(immigra\w*|visa|green card|deport\w*|citizenship)\b",
-    "relationship": r"\b(divorc\w*|separated|affair|custody)\b",
 }
 _SENSITIVE_RE = {k: re.compile(v, re.IGNORECASE) for k, v in _SENSITIVE_PATTERNS.items()}
 
@@ -82,7 +83,6 @@ def _str(kind="string", **extra):
 EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
-        "summary": _str(),
         "people": {
             "type": "array",
             "items": {
@@ -132,7 +132,7 @@ EXTRACTION_SCHEMA = {
             },
         },
     },
-    "required": ["summary", "people", "facts"],
+    "required": ["people", "facts"],
     "additionalProperties": False,
 }
 
@@ -153,9 +153,10 @@ JUDGE_SCHEMA = {
                 "required": ["index", "verdict", "sensitive_type", "certainty", "reason"],
                 "additionalProperties": False,
             },
-        }
+        },
+        "summary": _str(),
     },
-    "required": ["verdicts"],
+    "required": ["verdicts", "summary"],
     "additionalProperties": False,
 }
 
@@ -191,7 +192,10 @@ decide using ONLY its cited transcript sentence:
 legal trouble, immigration, sexuality or relationship trouble. Set sensitive_type.
 certainty: "uncertain" if the sentence is hedged (I think, maybe, might, not sure, possibly), \
 otherwise "stated".
-Return exactly one verdict per candidate, by index. When in doubt, choose "not_supported"."""
+Return exactly one verdict per candidate, by index. When in doubt, choose "not_supported".
+Then write summary: one or two sentences a salesperson would read before calling the customer, \
+using ONLY the facts you marked "supported". Never mention anything sensitive, money, financing, \
+credit or co-signing."""
 
 
 class NoSpeech(Exception):
@@ -262,6 +266,18 @@ def _add_usage(total: dict, usage: dict) -> None:
         total[key] = total.get(key, 0) + value
 
 
+def _fallback_summary(people: list[dict]) -> str:
+    for p in people:
+        if p["relationship"] == "customer":
+            line = p["name"]
+            if p["vehicle_purchased"]:
+                line += f" bought a {p['vehicle_purchased']}"
+                if p["vehicle_traded"]:
+                    line += f" and traded a {p['vehicle_traded']}"
+            return line + "."
+    return ""
+
+
 async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
     stages: dict[str, int] = {}
     usage: dict[str, int] = {}
@@ -294,7 +310,6 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
         raise MetaBadResponse("extraction missing facts or people")
 
     checks = {"extracted": 0, "quote_not_found": 0, "withheld": 0, "judge_rejected": 0, "kept": 0}
-    withheld: list[dict] = []
     redact: dict[str, str] = {}
     candidates: list[dict] = []
 
@@ -312,9 +327,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
         kind = "other" if category == "sensitive" else ""
         kind = sensitive_type(f"{fact_text} {quote}") or kind
         if kind:
-            checks["withheld"] += 1
-            withheld.append({"type": kind, "source_id": sentence.id})
-            redact[sentence.id] = kind
+            redact.setdefault(sentence.id, kind)
             continue
         candidates.append(
             {
@@ -329,6 +342,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
         )
 
     kept: list[dict] = []
+    judge_summary = ""
     if candidates:
         started = time.monotonic()
         listing = json.dumps(
@@ -358,6 +372,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
         )
         stages["judge_ms"] = int((time.monotonic() - started) * 1000)
         _add_usage(usage, result.usage)
+        judge_summary = str(judged.get("summary", "")).strip()[:600]
         verdicts = {}
         for v in judged.get("verdicts", []) if isinstance(judged.get("verdicts"), list) else []:
             if isinstance(v, dict) and isinstance(v.get("index"), int):
@@ -368,9 +383,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
             decision = verdict.get("verdict")
             if decision == "sensitive":
                 kind = verdict.get("sensitive_type") if verdict.get("sensitive_type") else "other"
-                checks["withheld"] += 1
-                withheld.append({"type": kind, "source_id": c["sentence"].id})
-                redact[c["sentence"].id] = kind
+                redact.setdefault(c["sentence"].id, kind)
                 continue
             if decision != "supported":  # includes a missing verdict: fail closed
                 checks["judge_rejected"] += 1
@@ -378,6 +391,10 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
             if verdict.get("certainty") == "uncertain":  # the judge may only lower certainty
                 c["certainty"] = "uncertain"
             kept.append(c)
+
+    # One withheld entry per sentence a sensitive fact came from.
+    withheld = [{"type": kind, "source_id": sid} for sid, kind in redact.items()]
+    checks["withheld"] = len(withheld)
 
     # Redact any other sentence the screen flags, even if no fact came from it.
     for s in sentences:
@@ -426,9 +443,11 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
             }
         )
 
-    summary = str(extraction.get("summary", "")).strip()[:600]
-    if sensitive_type(summary):
-        summary = ""
+    # The summary comes from the judge, written from verified facts only. If it is missing or trips
+    # the privacy screen, fall back to a plain line built from the people list.
+    summary = judge_summary if kept and not sensitive_type(judge_summary) else ""
+    if not summary:
+        summary = _fallback_summary(people_out)
 
     return {
         "summary": summary,
