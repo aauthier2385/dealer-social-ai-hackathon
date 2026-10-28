@@ -242,6 +242,15 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", _ARTIFACTS.sub(" ", text)).strip()
 
 
+_STUTTER = re.compile(r"\b([A-Z][\w-]*|\w*\d\w*)(?:\s+\1\b)+")
+
+
+def unstutter(text: str) -> str:
+    """'26 Ford Ranger Ranger Lariat' -> '26 Ford Ranger Lariat'. Only capitalized words and model
+    numbers, so ordinary English ('had had') is left alone. Quotes are never passed through this."""
+    return _STUTTER.sub(r"\1", text)
+
+
 def split_sentences(transcription: dict) -> list[Sentence]:
     turns = transcription.get("turns")
     if not isinstance(turns, list) or not turns:
@@ -385,7 +394,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
             {
                 "about": str(raw.get("about", "")).strip()[:80],
                 "category": category,
-                "fact": fact_text[:300],
+                "fact": unstutter(fact_text)[:300],
                 "timing": str(raw.get("timing", "")).strip()[:60],
                 "certainty": "uncertain" if raw.get("certainty") == "uncertain" else "stated",
                 "sentence": sentence,
@@ -482,7 +491,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
             continue
 
         def clean(value) -> str:
-            text = str(value or "").strip()[:120]
+            text = unstutter(str(value or "").strip())[:120]
             return "" if sensitive_type(text) else text
 
         people_out.append(
@@ -502,7 +511,7 @@ async def remember(meta: MetaClient, wav: bytes, audio_seconds: float) -> dict:
 
     # The summary comes from the judge, written from verified facts only. If it is missing or trips
     # the privacy screen, fall back to a plain line built from the people list.
-    summary = judge_summary if kept and not sensitive_type(judge_summary) else ""
+    summary = unstutter(judge_summary) if kept and not sensitive_type(judge_summary) else ""
     if not summary:
         summary = _fallback_summary(people_out)
 

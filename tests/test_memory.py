@@ -615,3 +615,15 @@ class ThirdRealRunTests(unittest.TestCase):
         ]["enum"]
         self.assertIn("pet", relationships)
         self.assertIn("never two separate animals", memory.EXTRACT_SYSTEM)
+
+
+class StutterTests(unittest.TestCase):
+    def test_repeated_names_and_model_numbers_collapse(self):
+        self.assertEqual(memory.unstutter("26 Ford Ranger Ranger Lariat"), "26 Ford Ranger Lariat")
+        self.assertEqual(memory.unstutter("a 25 Explorer Explorer ST"), "a 25 Explorer ST")
+        self.assertEqual(memory.unstutter("an F-150 F-150"), "an F-150")
+        self.assertEqual(memory.unstutter("2010 2010 Ranger"), "2010 Ranger")
+
+    def test_ordinary_words_are_left_alone(self):
+        self.assertEqual(memory.unstutter("he had had it for years"), "he had had it for years")
+        self.assertEqual(memory.unstutter("Ford Focus"), "Ford Focus")
