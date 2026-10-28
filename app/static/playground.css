@@ -130,3 +130,14 @@ button.copy { padding: 4px 10px; font-size: 12px; background: transparent; color
 .why { margin: 0; font-size: 12px; color: var(--ink-soft); font-style: italic; }
 @media (max-width: 480px) { .tp { grid-template-columns: 1fr; } }
 .tp-body > .chip { justify-self: start; }
+
+/* Relationships at risk */
+.check-label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; min-height: 42px; }
+.check-label input { width: auto; }
+.chip.high { border-color: var(--bad); color: var(--bad); }
+.chip.medium { border-color: var(--warn); color: var(--warn); }
+.signals { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 14px; color: var(--ink-soft); }
+.signals li.cited { color: var(--ink); }
+.step { margin: 0; font-size: 14px; }
+.step b { font-weight: 700; }
+.rank { font: 700 22px var(--font); color: var(--ink-soft); font-variant-numeric: tabular-nums; }

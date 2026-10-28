@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from app import __version__, audio, handoff, memory, planner
+from app import __version__, audio, handoff, memory, planner, risk
 from app.config import Settings, load_settings
 from app.meta_client import MetaClient, MetaError, Transport
 from app.ratelimit import RateLimiter
@@ -33,6 +33,7 @@ STATIC = Path(__file__).parent / "static"
 MAX_PING_PROMPT = 500
 MAX_JSON_BODY = 16 * 1024
 MAX_PLAN_BODY = 64 * 1024
+MAX_RISK_BODY = 512 * 1024  # a store's customer list
 FAVICON_SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
     b'<rect width="32" height="32" rx="7" fill="#1d4ed8"/>'
@@ -265,6 +266,32 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
             return _meta_error(exc)
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
+    async def risk_brief(request: Request) -> Response:
+        """Feature 6: a store's customer list -> who needs attention this week, and why."""
+        if not token_ok(request, settings.service_token):
+            return _error(401, "unauthorized", "Missing or wrong service token.")
+        allowed, wait = limiter.allow_all(
+            [
+                (client_key(request), settings.per_client_per_minute, 60),
+                ("global-minute", settings.global_per_minute, 60),
+                ("global-day", settings.global_per_day, 86400),
+            ]
+        )
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests. Try again shortly.", wait)
+        try:
+            data = await read_json(request, MAX_RISK_BODY)
+            store, as_of, top, use_ai, customers = risk.parse_input(data)
+        except RequestTooLarge:
+            return _error(413, "too_large", "Request body is too large.")
+        except (BadRequest, planner.PlanInputError) as exc:
+            return _error(400, "invalid_input", str(exc))
+        try:
+            result = await risk.brief(meta, store, as_of, top, use_ai, customers)
+        except MetaError as exc:
+            return _meta_error(exc)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
     def static(body: bytes, media_type: str):
         async def handler(request: Request) -> Response:
             return Response(
@@ -281,6 +308,7 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
         Route("/v1/memory/voice-note", voice_note_memory, methods=["POST"]),
         Route("/v1/plan/touchpoints", plan_touchpoints, methods=["POST"]),
         Route("/v1/handoff/brief", handoff_brief, methods=["POST"]),
+        Route("/v1/risk/brief", risk_brief, methods=["POST"]),
         Route("/favicon.ico", favicon, methods=["GET"]),
     ]
     if settings.playground_enabled:

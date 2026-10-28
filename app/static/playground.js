@@ -572,4 +572,117 @@
       $("ho-progress").textContent = "";
     }
   });
+
+  // ---------- Relationships at risk ----------
+  const riskForm = $("risk-form"), riskBtn = $("risk-btn"), riskError = $("risk-error"), riskResult = $("risk-result");
+
+  function daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  const MONTH = new Date().toLocaleString("en-US", { month: "long" });
+
+  // Fictional customers, dated relative to today so the demo always works.
+  function sampleStore() {
+    return [
+      { ref: "c1", customer_name: "Mark Stevenson", salesperson: "Joey", salesperson_active: false, vehicle: "26 Ford Ranger Lariat",
+        delivery_date: daysAgo(6), last_contact_date: daysAgo(5), overdue: [{ kind: "card", due_date: daysAgo(4) }],
+        facts: [{ id: "F1", about: "Bell", category: "pets", fact: "Has a little Frenchie named Bell" },
+                { id: "F2", about: "Mark Stevenson", category: "hobbies", fact: "Cuts down a lot of trees" }] },
+      { ref: "c2", customer_name: "Madeline Parks", salesperson: "Jayden", vehicle: "2024 Ford Escape Active",
+        delivery_date: daysAgo(35), last_contact_date: daysAgo(34), overdue: [{ kind: "day30", due_date: daysAgo(5) }],
+        facts: [{ id: "F1", about: "Madeline Parks", category: "family", fact: "Bought a farm next to her kids" }] },
+      { ref: "c3", customer_name: "Mike Carter", salesperson: "Andrew", vehicle: "blue F-150",
+        delivery_date: daysAgo(345), last_contact_date: daysAgo(240),
+        facts: [{ id: "F1", about: "Emma", category: "life_event", fact: "Daughter Emma turns 16", timing: MONTH, certainty: "stated" },
+                { id: "F2", about: "Mike Carter", category: "work", fact: "Owns a sawmill" }] },
+      { ref: "c4", customer_name: "Carl Jeffers", salesperson: "Tony", vehicle: "2020 Hyundai Elantra",
+        delivery_date: daysAgo(6), last_contact_date: daysAgo(5), overdue: [] },
+      { ref: "c5", customer_name: "Rosa Delgado", salesperson: "Joey", salesperson_active: false, vehicle: "2025 Ford Bronco Sport",
+        delivery_date: daysAgo(400), last_contact_date: daysAgo(200),
+        facts: [{ id: "F1", about: "Rosa Delgado", category: "hobbies", fact: "Coaches her son's baseball team" }] },
+      { ref: "c6", customer_name: "Dale Whitaker", salesperson: "Tony", vehicle: "2026 Ford Expedition",
+        delivery_date: daysAgo(95), last_contact_date: daysAgo(64), overdue: [{ kind: "day90", due_date: daysAgo(12) }],
+        facts: [{ id: "F1", about: "Dale Whitaker", category: "hobbies", fact: "Pulls a camper to the lake every summer" }] },
+      { ref: "c7", customer_name: "Priya Shah", salesperson: "Andrew", vehicle: "2026 Ford Maverick",
+        delivery_date: daysAgo(20), last_contact_date: daysAgo(19), overdue: [] },
+      { ref: "c8", customer_name: "Tom Becker", salesperson: "Jayden", vehicle: "2025 Ford Mustang",
+        delivery_date: daysAgo(380), last_contact_date: daysAgo(110), overdue: [{ kind: "anniversary", due_date: daysAgo(15) }],
+        facts: [{ id: "F1", about: "Tom Becker", category: "hobbies", fact: "Takes the Mustang to car shows" }] },
+    ];
+  }
+
+  let riskCustomers = sampleStore();
+  $("risk-sample").addEventListener("click", () => {
+    riskCustomers = sampleStore();
+    $("risk-loaded").textContent = riskCustomers.length + " fictional customers loaded, dated from today";
+  });
+
+  function renderRisk(data) {
+    $("risk-headline").textContent = data.headline || "";
+    const t = data.totals || {}, c = data.checks || {};
+    const chips = [
+      el("span", "check", (t.customers_checked || 0) + " checked by code"),
+      el("span", "check" + (t.needs_attention ? " cut" : " good"), (t.needs_attention || 0) + " need attention"),
+      el("span", "check" + (t.no_salesperson ? " cut" : ""), (t.no_salesperson || 0) + " with no salesperson"),
+      el("span", "check" + (t.overdue_follow_ups ? " cut" : ""), (t.overdue_follow_ups || 0) + " overdue follow-ups"),
+    ];
+    if (data.model) chips.push(el("span", "check good", (c.explained_by_ai || 0) + " explained by Muse Spark"));
+    if (c.replaced_with_plain_explanation) chips.push(el("span", "check cut", c.replaced_with_plain_explanation + " replaced with a plain explanation"));
+    $("risk-checks").replaceChildren(...chips);
+
+    $("risk-list").replaceChildren(...(data.customers || []).map((r) => {
+      const li = el("li", "tp");
+      li.append(el("div", "rank", "#" + r.rank));
+      const body = el("div", "tp-body");
+      const head = el("div", "tp-head");
+      head.append(el("span", "tp-title", r.customer), el("span", "chip " + r.level, r.level === "high" ? "High" : "Medium"));
+      head.append(el("span", "chip", r.salesperson ? r.salesperson + (r.salesperson_active ? "" : " (left)") : "No salesperson"));
+      if (r.explained_by === "code") head.append(el("span", "chip", "Explained by code"));
+      body.append(head);
+      const sig = el("ul", "signals");
+      (r.signals || []).forEach((s) => sig.append(el("li", s.cited ? "cited" : "", s.text)));
+      body.append(sig);
+      if (r.why) body.append(el("p", null, r.why));
+      const step = el("p", "step");
+      step.append(el("b", null, "Next: "), document.createTextNode(r.next_step + " "), el("span", "chip channel", r.owner));
+      body.append(step);
+      if (r.opener) body.append(draftBlock(r.opener));
+      if ((r.uses_facts || []).length) body.append(factChips(r.uses_facts));
+      li.append(body);
+      return li;
+    }));
+    if (!(data.customers || []).length) $("risk-list").replaceChildren(el("li", "quote", "Every relationship is on track this week."));
+    const u = data.usage || {};
+    $("risk-meta").textContent = data.model
+      ? (data.latency_ms / 1000).toFixed(1) + " s · " + (u.total_tokens || 0) + " tokens (" + (u.reasoning_tokens || 0) + " reasoning) · " + data.model
+      : "Code only · no model call · no cost";
+    riskResult.hidden = false;
+  }
+
+  riskForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    riskError.hidden = true;
+    if (!token()) { show(riskError, "Paste the service token first."); return; }
+    const top = parseInt($("risk-top").value, 10);
+    const body = { store_name: "Demo Motors", as_of: daysAgo(0), top: top >= 1 && top <= 15 ? top : 5,
+      ai: $("risk-ai").checked, customers: riskCustomers };
+    riskBtn.disabled = true;
+    $("risk-progress").textContent = body.ai ? "Ranking in code, then explaining the top " + body.top + "…" : "Ranking in code…";
+    try {
+      const response = await fetch("/v1/risk/brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token() },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) { riskResult.hidden = true; show(riskError, await readError(response)); return; }
+      renderRisk(await response.json());
+    } catch (e) {
+      show(riskError, "Could not reach the service.");
+    } finally {
+      riskBtn.disabled = false;
+      $("risk-progress").textContent = "";
+    }
+  });
 })();

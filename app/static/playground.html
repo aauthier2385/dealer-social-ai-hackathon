@@ -110,6 +110,30 @@
     </div>
   </section>
 
+  <section class="card" id="risk-card" aria-labelledby="risk-title">
+    <div class="section-head">
+      <h2 id="risk-title">Relationships at risk</h2>
+      <span class="models">Code &middot; Muse Spark</span>
+    </div>
+    <p class="hint">The manager&rsquo;s weekly brief. Code checks every customer for free (overdue follow-ups, a salesperson who left, long silence, life events coming up) and ranks them. Only the top few go to Muse Spark, which explains each one and suggests a next step.</p>
+    <form id="risk-form" class="plan-form" novalidate>
+      <div class="row gap wide">
+        <button id="risk-sample" type="button" class="secondary">Load sample store</button>
+        <span class="file-name" id="risk-loaded">8 fictional customers, dated from today</span>
+      </div>
+      <div class="field"><label for="risk-top">Write up the top</label><input id="risk-top" type="number" min="1" max="15" value="5" inputmode="numeric"></div>
+      <div class="field"><label class="check-label"><input id="risk-ai" type="checkbox" checked> Explain with Muse Spark</label><span class="count">Off = code only, no model call, no cost.</span></div>
+      <div class="row"><button id="risk-btn" type="submit">Build at-risk brief</button><span class="count" id="risk-progress" aria-live="polite"></span></div>
+    </form>
+    <p class="error" id="risk-error" role="alert" hidden></p>
+    <div id="risk-result" hidden>
+      <p class="summary" id="risk-headline"></p>
+      <div class="checks" id="risk-checks"></div>
+      <ol class="timeline" id="risk-list"></ol>
+      <p class="foot" id="risk-meta"></p>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="conn-title">
     <h2 id="conn-title">Connection test</h2>
     <p class="hint">Sends one short prompt to Muse Spark and shows the reply.</p>
@@ -135,7 +159,6 @@
   <section class="card muted" aria-labelledby="next-title">
     <h2 id="next-title">Coming during the hackathon</h2>
     <ul class="soon">
-      <li>Relationships-at-risk brief for managers</li>
       <li>Automatic privacy blur for store photos (SAM 3.1)</li>
       <li>Truckiversary posts (Muse Image)</li>
     </ul>
