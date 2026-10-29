@@ -30,7 +30,7 @@ visits. This service gives it a memory.
 | 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark | ✅ Built |
 | 4 | **Relationships at risk**: a manager brief of customers who need attention | Muse Spark | ✅ Built |
 | 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 | ✅ Built |
-| 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image | Planned |
+| 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image, Muse Spark, SAM 3.1 | ✅ Built |
 
 ## How relationship memory stays honest
 
@@ -116,6 +116,20 @@ server needs no audio software and never receives anything but the format Meta e
 - **It fails closed.** If either segmentation call fails or returns malformed records, no photo is
   returned at all, so an unblurred photo can never come back by mistake.
 
+## How Truckiversary posts respect the customer
+
+- **Nothing is made without the customer's OK** to be featured (the request is refused otherwise).
+- The delivery photo is prepared on this server with all metadata (including GPS) removed, and
+  bystanders' faces and license plates are blurred first with SAM 3.1.
+- **Muse Image paints only the celebration scene** around the customer's vehicle (open road,
+  confetti, balloons) and is told to draw no people, no text and no logos. The customer's photo is
+  never sent to the image model.
+- **Code builds the card**: the real photo goes on top untouched, so the AI never repaints a
+  customer's face, and the words are drawn by code, so the customer's name is always spelled right.
+- **Muse Spark writes the caption** in the salesperson's voice. Code checks it names the customer,
+  fits in a post, has no sales pitch and nothing sensitive; personal facts are never used in a
+  public post. A failing caption is replaced by a safe one.
+
 ## Architecture
 
 ```
@@ -159,6 +173,7 @@ Meta Model API  (Muse Spark · Voice Transcribe · SAM 3.1 · Muse Image)
 | POST | `/v1/handoff/brief` | Bearer token | JSON: customer, vehicle, store, leaving and new salesperson, optional customer-since date and voice samples, verified facts. Returns a brief and a warm introduction |
 | POST | `/v1/risk/brief` | Bearer token | JSON: a store's customers (salesperson and whether they are still here, dates, overdue follow-ups, verified facts), the week, how many to write up, and whether to use the model. Returns ranked customers with signals, an explanation, a next step and an opener |
 | POST | `/v1/photo/privacy-blur` | Bearer token | Body: a JPEG, PNG or WebP photo (up to 12 MB). Optional `keep`/`blur` tap points and `blur_all_faces`. Returns the blurred photo (no metadata), every face and plate with its decision, and checks |
+| POST | `/v1/truckiversary` | Bearer token | JSON: the delivery photo (data URL), customer first name, vehicle, optional color, years, salesperson, store, optional voice samples, `blur_bystanders`, and `customer_consent: true`. Returns the anniversary card (1080×1350 JPEG, no metadata), a checked caption and checks |
 | GET | `/playground` | none (page) | Browser test page; the token is typed in and kept in page memory only |
 
 ```bash
@@ -219,3 +234,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 29 | Feature 5, privacy blur for store photos: SAM 3.1 faces and license plates (two requests at once), main subjects kept and background people blurred in code, tap to keep or blur, metadata and GPS removed, fails closed, playground before/after view, 148 tests |
 | Oct 29 | Privacy blur in The Dealer Social's News Feed composer (staff only, copied to `integration/`): blur bystanders and plates before posting, tap to keep or blur, the blurred photo replaces the chosen file |
 | Oct 29 | Privacy blur real-run fix (a crowded go-kart track): the main group must stand together, so similar-size strangers are blurred by default; face boxes stay lined up on tall photos, 151 tests |
+| Oct 29 | Feature 6, Truckiversary posts: Muse Image paints the celebration scene, the real (privacy-blurred) photo goes on top untouched, code draws the words, Muse Spark writes a checked caption in the salesperson's voice, customer consent required, playground section, 165 tests |

@@ -805,5 +805,81 @@
       " · " + (u.total_tokens || 0) + " tokens · " + (data.model || "");
     photoResult.hidden = false;
   }
+
+  // ---------- Truckiversary (Muse Image + Muse Spark) ----------
+  const tvFile = $("tv-file"), tvBtn = $("tv-btn"), tvError = $("tv-error"), tvResult = $("tv-result");
+  let tvPhoto = null;
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  tvFile.addEventListener("change", () => {
+    const f = tvFile.files && tvFile.files[0];
+    if (!f) return;
+    tvPhoto = f;
+    $("tv-name").textContent = f.name + " · " + (f.size / 1024 / 1024).toFixed(1) + " MB";
+    tvBtn.disabled = false;
+    tvResult.hidden = true;
+  });
+
+  $("tv-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    tvError.hidden = true;
+    if (!token()) { show(tvError, "Paste the service token first."); return; }
+    if (!tvPhoto) return;
+    if (!$("tv-consent").checked) { show(tvError, "Get the customer's OK to be featured first, then tick the box."); return; }
+    tvBtn.disabled = true;
+    $("tv-progress").textContent = "Painting the scene and writing the caption… (about a minute)";
+    try {
+      const { blob } = await photoBody(tvPhoto);
+      const body = {
+        photo: await blobToDataUrl(blob),
+        customer_first_name: $("tv-first").value.trim(),
+        vehicle: $("tv-vehicle").value.trim(),
+        vehicle_color: $("tv-color").value.trim(),
+        years: parseInt($("tv-years").value, 10) || 1,
+        salesperson_name: $("tv-sp").value.trim(),
+        store_name: $("tv-store").value.trim(),
+        blur_bystanders: $("tv-blur").checked,
+        customer_consent: true,
+        voice_samples: $("plan-voice").value.split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 5),
+      };
+      const response = await fetch("/v1/truckiversary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token() },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) { tvResult.hidden = true; show(tvError, await readError(response)); return; }
+      const data = await response.json();
+      const c = data.checks || {};
+      const chips = [el("span", "check good", "Real photo untouched by AI")];
+      if (c.bystanders_blurred) chips.push(el("span", "check" + (c.faces_blurred ? " cut" : ""), (c.faces_blurred || 0) + " bystander" + (c.faces_blurred === 1 ? "" : "s") + " blurred"));
+      if (c.location_removed) chips.push(el("span", "check good", "GPS location removed"));
+      chips.push(el("span", "check" + (c.caption_replaced_with_safe_draft ? " cut" : " good"), c.caption_replaced_with_safe_draft ? "Caption replaced with a safe draft" : "Caption checked"));
+      chips.push(el("span", "check good", data.voice && data.voice.source === "salesperson_samples" ? "Voice: salesperson's texts" : "Voice: store default"));
+      $("tv-checks").replaceChildren(...chips);
+      $("tv-img").src = data.image;
+      $("tv-download").href = data.image;
+      const cap = $("tv-caption");
+      cap.textContent = data.caption;
+      cap.parentElement.querySelectorAll("button.copy").forEach((b) => b.remove());
+      cap.parentElement.append(copyButton(data.caption));
+      const u = data.usage || {};
+      $("tv-meta").textContent = (data.latency_ms / 1000).toFixed(1) + " s · " + (u.total_tokens || 0) + " tokens · " +
+        (data.models ? data.models.image + " + " + data.models.caption : "");
+      tvResult.hidden = false;
+    } catch (e) {
+      show(tvError, "Could not read that photo, or the service is unreachable.");
+    } finally {
+      tvBtn.disabled = false;
+      $("tv-progress").textContent = "";
+    }
+  });
 })();
 

@@ -31,6 +31,8 @@ TIMEOUT_SECONDS = 45.0
 TRANSCRIBE_TIMEOUT_SECONDS = 120.0
 SEGMENT_TIMEOUT_SECONDS = 60.0
 SEGMENT_MAX_RESPONSE_BYTES = 4 * 1024 * 1024  # masks for a crowded photo
+IMAGE_TIMEOUT_SECONDS = 150.0
+IMAGE_MAX_RESPONSE_BYTES = 16 * 1024 * 1024  # one generated image, base64
 ALLOWED_ROLES = {"system", "user", "assistant"}
 
 # (url, headers, body, timeout_seconds, max_bytes) -> (status, headers, body)
@@ -349,12 +351,58 @@ class MetaClient:
             text=text, model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
         )
 
+    @property
+    def image_model(self) -> str:
+        return self._settings.image_model
+
+    async def generate_image(self, prompt: str) -> tuple[bytes, ChatResult]:
+        """Muse Image: one image from a text prompt. Returns (image bytes, result metadata).
+
+        store=false, so no conversation state is kept on Meta's side.
+        """
+        prompt = prompt.strip()
+        if not prompt or len(prompt) > MAX_PROMPT_CHARS:
+            raise MetaInputError("bad image prompt")
+        request = {"model": self._settings.image_model, "input": prompt, "store": False}
+        payload = await self._send(
+            "meta_image",
+            "/responses",
+            json.dumps(request).encode(),
+            "application/json",
+            IMAGE_TIMEOUT_SECONDS,
+            max_bytes=IMAGE_MAX_RESPONSE_BYTES,
+        )
+        status = payload.get("status")
+        if status not in (None, "completed"):
+            raise MetaBadResponse(f"image generation did not complete: {status}")
+        encoded = None
+        for item in payload.get("output") or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "image_generation_call" and isinstance(item.get("result"), str):
+                encoded = item["result"]
+                break
+            for part in item.get("content") or []:
+                if isinstance(part, dict) and part.get("type") == "refusal":
+                    raise MetaBadResponse("image generation was refused")
+        if not encoded:
+            raise MetaBadResponse("no image in the response")
+        try:
+            image = base64.b64decode(encoded, validate=True)
+        except ValueError as exc:
+            raise MetaBadResponse("image was not valid base64") from exc
+        model = payload.get("model") if isinstance(payload.get("model"), str) else self.image_model
+        return image, ChatResult(
+            text="", model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
+        )
+
 
 def _usage(payload: dict) -> dict:
     """Keep integer token counts, including reasoning tokens (they are billed as output)."""
     raw = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
     usage = {k: v for k, v in raw.items() if isinstance(v, int)}
-    details = raw.get("completion_tokens_details")
-    if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
-        usage["reasoning_tokens"] = details["reasoning_tokens"]
+    for key in ("completion_tokens_details", "output_tokens_details"):  # chat / Responses API
+        details = raw.get(key)
+        if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
+            usage["reasoning_tokens"] = details["reasoning_tokens"]
     return usage

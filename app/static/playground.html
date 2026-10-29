@@ -138,6 +138,38 @@
     </div>
   </section>
 
+  <section class="card" id="tv-card" aria-labelledby="tv-title">
+    <div class="section-head">
+      <h2 id="tv-title">Truckiversary post</h2>
+      <span class="models">Muse Image &middot; Muse Spark &middot; SAM 3.1</span>
+    </div>
+    <p class="hint">A year after delivery, turn the delivery photo into an anniversary post. Muse Image paints the celebration scene; the real photo goes on top untouched (the AI never repaints a face); code writes the words so names are spelled right; Muse Spark writes the caption in the salesperson&rsquo;s voice.</p>
+    <form id="tv-form" class="plan-form" novalidate>
+      <div class="row gap wide">
+        <label class="file-btn" for="tv-file">Choose delivery photo&hellip;</label>
+        <input id="tv-file" type="file" accept="image/*">
+        <span class="file-name" id="tv-name">No photo yet</span>
+      </div>
+      <div class="field"><label for="tv-first">Customer first name</label><input id="tv-first" maxlength="40" value="Mark"></div>
+      <div class="field"><label for="tv-vehicle">Vehicle</label><input id="tv-vehicle" maxlength="60" value="Ford Ranger Lariat"></div>
+      <div class="field"><label for="tv-color">Color (optional)</label><input id="tv-color" maxlength="30" value="carbonized gray"></div>
+      <div class="field"><label for="tv-years">Years</label><input id="tv-years" type="number" min="1" max="30" value="1" inputmode="numeric"></div>
+      <div class="field"><label for="tv-sp">Salesperson</label><input id="tv-sp" maxlength="60" value="Andrew"></div>
+      <div class="field"><label for="tv-store">Store</label><input id="tv-store" maxlength="60" value="Demo Motors"></div>
+      <div class="field wide"><label class="check-label"><input id="tv-blur" type="checkbox" checked> Blur bystanders and license plates first (SAM 3.1)</label></div>
+      <div class="field wide"><label class="check-label"><input id="tv-consent" type="checkbox"> The customer said it&rsquo;s OK to feature them</label></div>
+      <div class="row"><button id="tv-btn" type="submit" disabled>Make the post</button><span class="count" id="tv-progress" aria-live="polite"></span></div>
+    </form>
+    <p class="error" id="tv-error" role="alert" hidden></p>
+    <div id="tv-result" hidden>
+      <div class="checks" id="tv-checks"></div>
+      <img id="tv-img" class="tv-img" alt="Anniversary post">
+      <div class="draft"><p id="tv-caption"></p></div>
+      <div class="row gap"><a class="file-btn" id="tv-download" download="truckiversary.jpg">Download post</a></div>
+      <p class="foot" id="tv-meta"></p>
+    </div>
+  </section>
+
   <section class="card" id="risk-card" aria-labelledby="risk-title">
     <div class="section-head">
       <h2 id="risk-title">Relationships at risk</h2>
@@ -182,13 +214,6 @@
       </dl>
     </div>
     <p class="error" id="error" role="alert" hidden></p>
-  </section>
-
-  <section class="card muted" aria-labelledby="next-title">
-    <h2 id="next-title">Coming during the hackathon</h2>
-    <ul class="soon">
-      <li>Truckiversary posts (Muse Image)</li>
-    </ul>
   </section>
 
   <footer class="foot">Demo uses fictional data only. Nothing you send here is stored or logged.</footer>

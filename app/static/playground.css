@@ -154,3 +154,6 @@ button.copy { padding: 4px 10px; font-size: 12px; background: transparent; color
 .face-box span { position: absolute; left: 0; top: 100%; margin-top: 2px; font: 600 10px var(--font); background: var(--panel); color: var(--ink); padding: 1px 4px; border-radius: 4px; white-space: nowrap; }
 #photo-download { text-decoration: none; color: var(--ink); }
 
+/* Truckiversary */
+.tv-img { width: 100%; max-width: 420px; height: auto; display: block; border-radius: 10px; }
+#tv-download { text-decoration: none; color: var(--ink); }

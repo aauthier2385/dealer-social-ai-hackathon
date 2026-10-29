@@ -276,16 +276,16 @@ def _box(d: Detected, width: int, height: int) -> dict:
     }
 
 
-async def privacy_blur(
+async def find_and_blur(
     meta: MetaClient,
-    data: bytes,
+    image: Image.Image,
     keep: str = "",
     blur_points: str = "",
     blur_all_faces: bool = False,
-) -> dict:
-    image, notes = await anyio.to_thread.run_sync(prepare, data)
+) -> tuple[Image.Image, list[Detected], list[Detected], dict, int, str]:
+    """SAM 3.1 finds faces and plates; code decides and blurs.
+    Returns (blurred image, faces, plates, usage, latency_ms, model)."""
     jpeg = await anyio.to_thread.run_sync(to_jpeg, image)
-
     results: dict[str, object] = {}
 
     async def run(concept: str, kind: str) -> None:
@@ -310,12 +310,27 @@ async def privacy_blur(
         blur_all_faces,
     )
     blurred = await anyio.to_thread.run_sync(blur, image, faces + plates)
-    out = await anyio.to_thread.run_sync(to_jpeg, blurred, 88)
-
     usage: dict[str, int] = {}
     for r in results.values():
         for k, v in r.usage.items():
             usage[k] = usage.get(k, 0) + v
+    latency = max(r.latency_ms for r in results.values())
+    return blurred, faces, plates, usage, latency, results["face"].model
+
+
+async def privacy_blur(
+    meta: MetaClient,
+    data: bytes,
+    keep: str = "",
+    blur_points: str = "",
+    blur_all_faces: bool = False,
+) -> dict:
+    image, notes = await anyio.to_thread.run_sync(prepare, data)
+    blurred, faces, plates, usage, latency, model = await find_and_blur(
+        meta, image, keep, blur_points, blur_all_faces
+    )
+    out = await anyio.to_thread.run_sync(to_jpeg, blurred, 88)
+    size = image.size
     return {
         "image": "data:image/jpeg;base64," + base64.b64encode(out).decode(),
         "width": size[0],
@@ -333,6 +348,6 @@ async def privacy_blur(
             "resized": notes["resized"],
         },
         "usage": usage,
-        "latency_ms": max(r.latency_ms for r in results.values()),
-        "model": results["face"].model,
+        "latency_ms": latency,
+        "model": model,
     }

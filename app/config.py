@@ -13,6 +13,7 @@ DEFAULT_BASE_URL = "https://api.meta.ai/v1"
 DEFAULT_TEXT_MODEL = "muse-spark-1.3"
 DEFAULT_VOICE_MODEL = "muse-voice-transcribe-1.0"
 DEFAULT_SAM_MODEL = "sam-3.1"
+DEFAULT_IMAGE_MODEL = "muse-image-1.0"
 REASONING_EFFORTS = ("minimal", "low", "medium", "high")
 MIN_TOKEN_LENGTH = 32
 
@@ -30,6 +31,7 @@ class Settings:
     text_model: str
     voice_model: str
     sam_model: str
+    image_model: str
     reasoning_effort: str
     max_concurrency: int
     per_client_per_minute: int
@@ -104,6 +106,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     model = _model(env, "META_TEXT_MODEL", DEFAULT_TEXT_MODEL)
     voice_model = _model(env, "META_VOICE_MODEL", DEFAULT_VOICE_MODEL)
     sam_model = _model(env, "META_SAM_MODEL", DEFAULT_SAM_MODEL)
+    image_model = _model(env, "META_IMAGE_MODEL", DEFAULT_IMAGE_MODEL)
 
     effort = env.get("META_REASONING_EFFORT", "low").strip().lower()
     if effort not in REASONING_EFFORTS:
@@ -117,6 +120,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         text_model=model,
         voice_model=voice_model,
         sam_model=sam_model,
+        image_model=image_model,
         reasoning_effort=effort,
         max_concurrency=_int(env, "MAX_CONCURRENT_META_CALLS", 4, 1, 32),
         per_client_per_minute=_int(env, "RATE_LIMIT_PER_CLIENT_PER_MINUTE", 20, 1, 1000),

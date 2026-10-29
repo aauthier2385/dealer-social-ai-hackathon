@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from app import __version__, audio, handoff, memory, photo, planner, risk
+from app import __version__, audio, handoff, memory, photo, planner, risk, truckiversary
 from app.config import Settings, load_settings
 from app.meta_client import MetaClient, MetaError, Transport
 from app.ratelimit import RateLimiter
@@ -302,6 +302,34 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
             return _meta_error(exc)
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
+    async def truckiversary_card(request: Request) -> Response:
+        """Feature 6: a delivery photo -> an anniversary post (card + caption)."""
+        if not token_ok(request, settings.service_token):
+            return _error(401, "unauthorized", "Missing or wrong service token.")
+        allowed, wait = limiter.allow_all(
+            [
+                ("photo-" + client_key(request), settings.photo_per_client_per_minute, 60),
+                ("photo-global-day", settings.photo_global_per_day, 86400),
+                ("global-minute", settings.global_per_minute, 60),
+                ("global-day", settings.global_per_day, 86400),
+            ]
+        )
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests. Try again shortly.", wait)
+        try:
+            data = await read_json(request, truckiversary.MAX_PHOTO_CHARS + 64 * 1024)
+            card = truckiversary.parse_input(data)
+            result = await truckiversary.make_card(meta, card)
+        except RequestTooLarge:
+            return _error(413, "too_large", "That photo is too large. Keep it under 12 MB.")
+        except (BadRequest, planner.PlanInputError) as exc:
+            return _error(400, "invalid_input", str(exc))
+        except photo.PhotoError as exc:
+            return _error(400, "invalid_photo", str(exc))
+        except MetaError as exc:
+            return _meta_error(exc)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
     async def risk_brief(request: Request) -> Response:
         """Feature 6: a store's customer list -> who needs attention this week, and why."""
         if not token_ok(request, settings.service_token):
@@ -346,6 +374,7 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
         Route("/v1/handoff/brief", handoff_brief, methods=["POST"]),
         Route("/v1/risk/brief", risk_brief, methods=["POST"]),
         Route("/v1/photo/privacy-blur", privacy_blur, methods=["POST"]),
+        Route("/v1/truckiversary", truckiversary_card, methods=["POST"]),
         Route("/favicon.ico", favicon, methods=["GET"]),
     ]
     if settings.playground_enabled:
