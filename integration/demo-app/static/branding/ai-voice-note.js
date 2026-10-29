@@ -166,6 +166,17 @@
     memory.summary = swap(memory.summary);
   }
 
+  function transcriptBox() {
+    var box = el("details", "ai-withheld");
+    var lines = memory.transcript || [];
+    box.append(el("summary", null, "What the AI heard (" + lines.length + " sentence" + (lines.length === 1 ? "" : "s") +
+      ", " + Math.round(memory.audio_seconds || 0) + " s of audio)"));
+    var ol = el("ol");
+    lines.forEach(function (t) { ol.append(el("li", null, (t.speaker ? t.speaker + ": " : "") + t.text)); });
+    box.append(ol);
+    return box;
+  }
+
   function review() {
     panel.replaceChildren();
     panel.append(el("p", "ai-sum", memory.summary || "Here's what the AI heard."));
@@ -219,8 +230,19 @@
       li.append(cb, body);
       list.append(li);
     });
-    if (!(memory.facts || []).length) list.append(el("li", "ai-status", "Nothing to remember from this note."));
     panel.append(list);
+    panel.append(transcriptBox());
+    if (!(memory.facts || []).length) {
+      // Nothing to save: say what was heard and offer another try instead of an empty form.
+      panel.append(el("p", "ai-err", (memory.transcript || []).length
+        ? "Nothing to remember from that note. Open \u201cWhat the AI heard\u201d to check it, then try again and mention the customer by name, their vehicle, family, pets or what's coming up."
+        : "No speech was heard. Check the microphone and try again."));
+      var again = el("button", "btn sm", "Record again");
+      again.type = "button";
+      again.addEventListener("click", function () { memory = null; audio = null; start(); });
+      panel.append(again);
+      return;
+    }
 
     var customerP = (memory.people || []).filter(function (p) { return p.relationship === "customer"; })[0] || {};
     var fields = el("div", "ai-fields");
