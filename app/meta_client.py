@@ -97,7 +97,8 @@ def urllib_transport(
     url: str, headers: dict, body: bytes, timeout: float, max_bytes: int
 ) -> tuple[int, dict, bytes]:
     """Default transport: standard-library HTTPS with no third-party HTTP client."""
-    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    method = "POST" if body else "GET"
+    request = urllib.request.Request(url, data=body or None, headers=headers, method=method)
     try:
         with _opener.open(request, timeout=timeout) as response:
             return response.status, dict(response.headers), response.read(max_bytes + 1)
@@ -202,7 +203,8 @@ class MetaClient:
         if status != 200:
             # Meta's error type and code (never its message, which can echo what was sent).
             kind = _error_kind(data)
-            log.warning("%s upstream_error status=%s %s", event, status, kind)
+            request_id = _request_id(response_headers)
+            log.warning("%s upstream_error status=%s %s%s", event, status, kind, request_id)
             if status == 402 or "quota" in kind or "credit" in kind or "billing" in kind:
                 raise MetaQuota(f"upstream status {status} {kind}")
             raise MetaBadResponse(f"upstream status {status} {kind}")
@@ -216,6 +218,34 @@ class MetaClient:
             raise MetaBadResponse("unexpected response shape")
         payload["_latency_ms"] = latency_ms
         return payload
+
+    async def check_models(self) -> None:
+        """Log whether Meta lists the configured models for this key, as seen from this server.
+        Only model IDs are logged. Never raises: this is a startup diagnostic."""
+        if not self.enabled:
+            return
+        try:
+            payload = await self._send("meta_models", "/models", b"", "application/json", 15)
+        except MetaError as exc:
+            log.warning("meta_models check_failed %s", exc.code)
+            return
+        listed = sorted(
+            str(item.get("id"))
+            for item in (payload.get("data") if isinstance(payload.get("data"), list) else [])
+            if isinstance(item, dict) and item.get("id")
+        )
+        wanted = {
+            "text": self._settings.text_model,
+            "voice": self._settings.voice_model,
+            "sam": self._settings.sam_model,
+            "image": self._settings.image_model,
+        }
+        found = " ".join(
+            f"{name}={model}:{'listed' if model in listed else 'MISSING'}"
+            for name, model in wanted.items()
+        )
+        log.info("meta_models listed=%s %s", len(listed), found)
+        log.info("meta_models ids=%s", ",".join(listed[:40]))
 
     async def chat(
         self,
@@ -405,6 +435,15 @@ class MetaClient:
         return image, ChatResult(
             text="", model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
         )
+
+
+def _request_id(headers: dict) -> str:
+    """' request_id=...' if Meta sent one (useful when asking Meta support), else ''."""
+    for name, value in headers.items():
+        lowered = name.lower()
+        if ("request-id" in lowered or "trace-id" in lowered) and len(str(value)) <= 80:
+            return f" request_id={value}"
+    return ""
 
 
 def _error_kind(data: bytes) -> str:

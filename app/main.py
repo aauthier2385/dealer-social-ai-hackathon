@@ -5,9 +5,11 @@ Run locally:   uvicorn app.main:create_app --factory --host 127.0.0.1 --port 809
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
+import anyio
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -390,4 +392,13 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
     log.info(
         "starting dealer-social-ai version=%s meta_enabled=%s", __version__, settings.meta_enabled
     )
-    return Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)])
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette):
+        # One startup check, in the background, so a slow Meta never delays the health check.
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(meta.check_models)
+            yield
+            tasks.cancel_scope.cancel()
+
+    return Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)], lifespan=lifespan)

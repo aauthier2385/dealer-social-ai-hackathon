@@ -229,3 +229,47 @@ class UpstreamErrorTests(unittest.TestCase):
             r = ping(app)
         self.assertEqual(r.status, 502)
         self.assertIn("code=model_not_found", " ".join(logs.output))
+
+
+class ModelCheckTests(unittest.TestCase):
+    """Startup diagnostic: does Meta list our models for this key, from this server?"""
+
+    def _client(self, status, payload, headers=None):
+        from app.meta_client import MetaClient
+
+        seen = {}
+
+        def transport(url, headers_sent, body, timeout, max_bytes):
+            seen["url"], seen["body"] = url, body
+            return status, headers or {}, json.dumps(payload).encode()
+
+        return MetaClient(settings(), transport), seen
+
+    def test_logs_which_configured_models_are_listed(self):
+        meta, seen = self._client(
+            200, {"data": [{"id": "muse-spark-1.3"}, {"id": "sam-3.1"}, {"id": "other"}]}
+        )
+        with self.assertLogs("dsai", level="INFO") as logs:
+            asyncio.run(meta.check_models())
+        text = " ".join(logs.output)
+        self.assertTrue(seen["url"].endswith("/models"))
+        self.assertEqual(seen["body"], b"")
+        self.assertIn("listed=3", text)
+        self.assertIn("text=muse-spark-1.3:listed", text)
+        self.assertIn("sam=sam-3.1:listed", text)
+        self.assertIn("image=muse-image-1.0:MISSING", text)
+        self.assertNotIn(FAKE_KEY, text)
+
+    def test_a_failed_check_never_raises(self):
+        meta, _ = self._client(401, {"error": {"type": "auth"}})
+        with self.assertLogs("dsai", level="WARNING") as logs:
+            asyncio.run(meta.check_models())
+        self.assertIn("meta_models check_failed", " ".join(logs.output))
+
+    def test_upstream_error_includes_metas_request_id(self):
+        body = json.dumps({"error": {"type": "invalid_request_error", "code": "x"}}).encode()
+        fake = FakeMeta(status=404, body=body, headers={"X-Request-Id": "req_abc123"})
+        app = create_app(settings(), fake)
+        with self.assertLogs("dsai", level="WARNING") as logs:
+            ping(app)
+        self.assertIn("request_id=req_abc123", " ".join(logs.output))
