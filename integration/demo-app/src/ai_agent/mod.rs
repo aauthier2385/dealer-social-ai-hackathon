@@ -7,12 +7,14 @@
 //! * `schema`    - three new tables: customer relationships, customer facts, follow-ups
 //! * `voice`     - voice note in a customer's chat -> review -> saved facts + follow-up plan
 //! * `followups` - the Follow-ups tab, the chat bar, handoff and the at-risk brief
+//! * `photo`     - privacy blur (SAM 3.1) for store photos before they are posted to the feed
 //!
 //! The AI service stores nothing. Customer data lives only in this app's database, and staff
 //! approve every message before it is sent.
 
 pub mod client;
 pub mod followups;
+pub mod photo;
 pub mod schema;
 pub mod voice;
 
@@ -21,4 +23,5 @@ use actix_web::web;
 pub fn routes(c: &mut web::ServiceConfig) {
     voice::routes(c);
     followups::routes(c);
+    photo::routes(c);
 }

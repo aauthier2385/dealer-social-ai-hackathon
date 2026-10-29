@@ -67,6 +67,7 @@ fn http() -> &'static reqwest::Client {
 }
 
 const MAX_REPLY: usize = 1024 * 1024;
+const MAX_PHOTO_REPLY: usize = 8 * 1024 * 1024; // the blurred photo comes back inline
 
 async fn send(
     path: &str,
@@ -74,6 +75,17 @@ async fn send(
     content_type: &str,
     body: Vec<u8>,
     timeout: Duration,
+) -> Result<Value, AiError> {
+    send_limited(path, user, content_type, body, timeout, MAX_REPLY).await
+}
+
+async fn send_limited(
+    path: &str,
+    user: Uuid,
+    content_type: &str,
+    body: Vec<u8>,
+    timeout: Duration,
+    max_reply: usize,
 ) -> Result<Value, AiError> {
     let cfg = config().ok_or_else(|| AiError::new(503, "The AI assistant is not set up on this site."))?;
     let resp = http()
@@ -86,7 +98,7 @@ async fn send(
         .send()
         .await
         .map_err(|e| {
-            eprintln!("[ai] {path} unreachable: timeout={}", e.is_timeout());
+            eprintln!("[ai] {} unreachable: timeout={}", path.split('?').next().unwrap_or(""), e.is_timeout());
             AiError::new(503, "The AI assistant is not responding. Try again in a minute.")
         })?;
     let status = resp.status().as_u16();
@@ -94,7 +106,7 @@ async fn send(
         .bytes()
         .await
         .map_err(|_| AiError::new(502, "The AI assistant sent an incomplete reply."))?;
-    if bytes.len() > MAX_REPLY {
+    if bytes.len() > max_reply {
         return Err(AiError::new(502, "The AI assistant sent a reply that was too large."));
     }
     let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
@@ -102,7 +114,7 @@ async fn send(
         return Ok(json);
     }
     // Only the event, status and path are logged: never customer content.
-    eprintln!("[ai] {path} status={status}");
+    eprintln!("[ai] {} status={status}", path.split('?').next().unwrap_or(""));
     let message = match status {
         401 => "The AI assistant rejected this site's token. Check DEALER_SOCIAL_AI_TOKEN.".to_string(),
         _ => json
@@ -116,6 +128,17 @@ async fn send(
 
 pub async fn voice_note(user: Uuid, wav: Vec<u8>) -> Result<Value, AiError> {
     send("/v1/memory/voice-note", user, "audio/wav", wav, Duration::from_secs(150)).await
+}
+
+/// Feature 5: blur bystanders' faces and license plates in a store photo (SAM 3.1).
+/// `query` carries the staff member's taps (keep/blur points) and the blur-every-face switch.
+pub async fn photo_blur(user: Uuid, photo: Vec<u8>, content_type: &str, query: &str) -> Result<Value, AiError> {
+    let path = if query.is_empty() {
+        "/v1/photo/privacy-blur".to_string()
+    } else {
+        format!("/v1/photo/privacy-blur?{query}")
+    };
+    send_limited(&path, user, content_type, photo, Duration::from_secs(120), MAX_PHOTO_REPLY).await
 }
 
 pub async fn post_json(path: &str, user: Uuid, body: &Value) -> Result<Value, AiError> {

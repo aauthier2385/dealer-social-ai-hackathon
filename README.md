@@ -7,7 +7,8 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026), S
 > **Everything in this repository was built during the Hackathon.** It is a new, standalone
 > service. The existing product it plugs into, [The Dealer Social](https://www.thedealersocial.com),
 > is not part of this repository. Every file and line added to that app during the Hackathon
-> (voice notes in the chat, the Follow-ups tab, handoff and the at-risk brief) is copied into
+> (voice notes in the chat, the Follow-ups tab, handoff, the at-risk brief and the privacy blur
+> in the News Feed composer) is copied into
 > [`integration/`](integration/) so every piece of new work is visible here.
 
 ## The problem
@@ -216,3 +217,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 28 | Feature 6, relationships at risk: signals scored and ranked in code, top customers explained by Muse Spark with every explanation citing its signals, code-only mode, sample store in the playground, 129 tests |
 | Oct 28 | Integration into The Dealer Social demo app (copied to `integration/`): voice note in the customer's chat with review and name fixes, three new tables, Follow-ups tab after Appointments with Use draft / Mark done / Snooze / Skip and a due badge, next-follow-up bar in each chat, admin store view, reassign-with-introductions handoff, at-risk brief, fictional demo store seed |
 | Oct 29 | Feature 5, privacy blur for store photos: SAM 3.1 faces and license plates (two requests at once), main subjects kept and background people blurred in code, tap to keep or blur, metadata and GPS removed, fails closed, playground before/after view, 148 tests |
+| Oct 29 | Privacy blur in The Dealer Social's News Feed composer (staff only, copied to `integration/`): blur bystanders and plates before posting, tap to keep or blur, the blurred photo replaces the chosen file |

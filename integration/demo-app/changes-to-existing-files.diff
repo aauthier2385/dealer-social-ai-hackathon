@@ -49,6 +49,21 @@ index d0bd9d3..e982ff9 100644
      })
      .bind((host.as_str(), port))?
      .run()
+diff --git a/src/routes/posts.rs b/src/routes/posts.rs
+index 8a905c6..afd85fe 100644
+--- a/src/routes/posts.rs
++++ b/src/routes/posts.rs
+@@ -481,6 +481,10 @@ async fn feed(r: HttpRequest, p: web::Data<PgPool>, q: web::Query<FeedQuery>) ->
+     ));
+     body.push_str(crate::mentions::PICKER);
+     body.push_str(COMPOSER_JS);
++    // Hackathon: staff can blur bystanders and license plates before posting a photo (SAM 3.1).
++    if me.is_staff() && crate::ai_agent::client::enabled() {
++        body.push_str(r#"<script src="/branding/ai-photo-blur.js"></script>"#);
++    }
+     body.push_str(SHARE_JS);
+     body.push_str(FEED_LIVE_JS);
+     body.push_str(FEED_SCROLL_JS);
 diff --git a/src/routes/social.rs b/src/routes/social.rs
 index 2c3ae00..fc89d16 100644
 --- a/src/routes/social.rs

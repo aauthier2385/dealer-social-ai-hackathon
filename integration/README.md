@@ -11,9 +11,11 @@ Hackathon is copied here so judges can see all new work. The demo instance uses 
 | [`demo-app/src/ai_agent/schema.rs`](demo-app/src/ai_agent/schema.rs) | Three new tables: `customer_relationships` (who sold whom), `customer_facts` (verified facts, staff only) and `follow_ups` (the to-do list) |
 | [`demo-app/src/ai_agent/voice.rs`](demo-app/src/ai_agent/voice.rs) | Voice note in a customer's chat: forwards the WAV to `/v1/memory/voice-note`, then saves the facts staff kept and builds the plan |
 | [`demo-app/src/ai_agent/followups.rs`](demo-app/src/ai_agent/followups.rs) | The **Follow-ups** tab (Overdue, Today, Coming up; Use draft, Mark done, Snooze, Skip), the next-follow-up bar in each chat, the manager's at-risk brief (`/v1/risk/brief`) and reassigning a departed salesperson's customers with warm introductions (`/v1/handoff/brief`) |
+| [`demo-app/src/ai_agent/photo.rs`](demo-app/src/ai_agent/photo.rs) | Privacy blur before posting: forwards the photo staff chose in the News Feed composer to `/v1/photo/privacy-blur`, passing on only the tap points and the blur-every-face switch |
+| [`demo-app/static/branding/ai-photo-blur.js`](demo-app/static/branding/ai-photo-blur.js) | Composer side of the privacy blur: **Blur bystanders & plates**, a tappable before/after view, and swapping the chosen file for the blurred one (no metadata) so that is what gets posted; **Use original** undoes it |
 | [`demo-app/static/branding/ai-voice-note.js`](demo-app/static/branding/ai-voice-note.js) | Browser side of the voice note: record or choose a file, convert to 16 kHz mono WAV on the device, review the facts, fix misheard names, save |
 | [`demo-app/demo_seed/ai_followups_demo.sql`](demo-app/demo_seed/ai_followups_demo.sql) | A fictional store (manager, three salespeople, eight customers) with facts, follow-ups and message history dated from today, for the demo |
-| [`demo-app/changes-to-existing-files.diff`](demo-app/changes-to-existing-files.diff) | The few marked lines changed in existing files: register the module and tables, add the nav tab, add the chat bar and "Use draft" to the conversation page, count due follow-ups in the nav badge, and allow the microphone for this site only |
+| [`demo-app/changes-to-existing-files.diff`](demo-app/changes-to-existing-files.diff) | The few marked lines changed in existing files: register the module and tables, add the nav tab, add the chat bar and "Use draft" to the conversation page, count due follow-ups in the nav badge, add the privacy blur to the News Feed composer for staff, and allow the microphone for this site only |
 
 ## How the app uses the AI service
 
@@ -23,6 +25,7 @@ Customer chat (staff) ── voice note ──► /v1/memory/voice-note ──�
 Follow-ups tab ── Use draft ──► chat with the draft in the message box ──► person sends ──► marked sent
 Admin: reassign ──► /v1/handoff/brief per customer ──► intro follow-up + brief for the new salesperson
 Admin: at-risk brief ──► /v1/risk/brief (code ranks the whole store; AI explains the top few)
+Feed composer (staff) ── photo ──► /v1/photo/privacy-blur (SAM 3.1) ──► blurred photo replaces the file ──► post
 ```
 
 Each salesperson's texting voice comes from the last few texts they actually sent customers; the
