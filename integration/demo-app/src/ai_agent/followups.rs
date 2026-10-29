@@ -112,6 +112,23 @@ fn text(v: &Value, key: &str, limit: usize) -> String {
         .collect()
 }
 
+const STALE_DAYS: i64 = 3;
+
+/// Active staff at this store: not marked as having left, and the account is active.
+async fn is_active_staff(p: &PgPool, user: Uuid, store: Uuid) -> bool {
+    sqlx::query_as::<_, (bool,)>(
+        "SELECT true FROM users u WHERE u.id=$1 AND u.status='active' AND u.role IN ('employee','admin') \
+         AND NOT EXISTS(SELECT 1 FROM staff_profiles sp WHERE sp.user_id=u.id AND sp.dealership_id=$2 AND sp.employment_inactive)",
+    )
+    .bind(user)
+    .bind(store)
+    .fetch_optional(p)
+    .await
+    .ok()
+    .flatten()
+    .is_some()
+}
+
 /// Build (or rebuild) the customer's follow-up plan with the AI service and store it.
 /// Pending plan items are replaced; anything already done, sent or skipped is kept.
 pub async fn build_plan(p: &PgPool, me: &CurrentUser, customer: Uuid) -> Result<usize, AiError> {
@@ -128,7 +145,26 @@ pub async fn build_plan(p: &PgPool, me: &CurrentUser, customer: Uuid) -> Result<
     let Some((owner, vehicle, delivery, birthday)) = rel else {
         return Err(AiError { status: 404, message: "No relationship record for this customer.".into() });
     };
-    let owner = owner.unwrap_or(me.id);
+    // Drafts are written in the owner's name and voice. If the owner has left the store (or there
+    // is none), the staff member building the plan takes the relationship over.
+    let owner = match owner {
+        Some(o) if is_active_staff(p, o, me.dealership_id).await => o,
+        _ => {
+            let _ = sqlx::query("UPDATE customer_relationships SET salesperson_id=$3, updated_at=now() WHERE dealership_id=$1 AND customer_id=$2")
+                .bind(me.dealership_id)
+                .bind(customer)
+                .bind(me.id)
+                .execute(p)
+                .await;
+            let _ = sqlx::query("UPDATE follow_ups SET salesperson_id=$3 WHERE dealership_id=$1 AND customer_id=$2 AND status='pending'")
+                .bind(me.dealership_id)
+                .bind(customer)
+                .bind(me.id)
+                .execute(p)
+                .await;
+            me.id
+        }
+    };
     let today = crate::timezone::today(&me.timezone);
     let body = json!({
         "customer_name": person_name(p, customer, me.dealership_id).await,
@@ -143,6 +179,18 @@ pub async fn build_plan(p: &PgPool, me: &CurrentUser, customer: Uuid) -> Result<
     let plan = client::post_json("/v1/plan/touchpoints", me.id, &body).await?;
     let touchpoints = plan.get("touchpoints").and_then(Value::as_array).cloned().unwrap_or_default();
 
+    // Kinds already on the to-do list stay on it when the plan is rewritten, even if overdue.
+    let still_open: Vec<String> = sqlx::query_as::<_, (String,)>(
+        "SELECT kind FROM follow_ups WHERE dealership_id=$1 AND customer_id=$2 AND status='pending' AND source='plan'",
+    )
+    .bind(me.dealership_id)
+    .bind(customer)
+    .fetch_all(p)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| r.0)
+    .collect();
     let mut tx = p.begin().await.map_err(|_| AiError { status: 500, message: "Database busy.".into() })?;
     let _ = sqlx::query(
         "DELETE FROM follow_ups WHERE dealership_id=$1 AND customer_id=$2 AND status='pending' AND source='plan'",
@@ -156,6 +204,11 @@ pub async fn build_plan(p: &PgPool, me: &CurrentUser, customer: Uuid) -> Result<
         let Some(due) = tp.get("date").and_then(Value::as_str).and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()) else {
             continue;
         };
+        // An older sale entered late should not fill the list with long-past to-dos.
+        let kind = text(tp, "kind", 30);
+        if due < today - Duration::days(STALE_DAYS) && !still_open.contains(&kind) {
+            continue;
+        }
         let res = sqlx::query(
             "INSERT INTO follow_ups(id,dealership_id,customer_id,salesperson_id,kind,title,due_date,channel,draft_text,call_notes,card_text,uses_facts,source) \
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'plan')",
@@ -164,7 +217,7 @@ pub async fn build_plan(p: &PgPool, me: &CurrentUser, customer: Uuid) -> Result<
         .bind(me.dealership_id)
         .bind(customer)
         .bind(owner)
-        .bind(text(tp, "kind", 30))
+        .bind(&kind)
         .bind(text(tp, "title", 80))
         .bind(due)
         .bind(text(tp, "channel", 20))
@@ -631,7 +684,7 @@ async fn handoff(r: HttpRequest, p: web::Data<PgPool>, f: web::Form<HandoffForm>
     let samples = voice_samples(pool, me.dealership_id, f.to).await;
     let today = crate::timezone::today(&me.timezone);
 
-    let (mut moved, mut briefs) = (0, 0);
+    let (mut moved, mut briefs, mut rewritten) = (0, 0, 0);
     for (customer, vehicle, since) in customers {
         let name = person_name(pool, customer, me.dealership_id).await;
         let body = json!({
@@ -677,10 +730,29 @@ async fn handoff(r: HttpRequest, p: web::Data<PgPool>, f: web::Form<HandoffForm>
         .await;
         if tx.commit().await.is_ok() {
             moved += 1;
+            // Planned drafts were written in the old salesperson's name and voice: rewrite them
+            // for the new salesperson (same dates, same facts).
+            let has_plan: Option<(bool,)> = sqlx::query_as(
+                "SELECT true FROM follow_ups WHERE dealership_id=$1 AND customer_id=$2 AND status='pending' AND source='plan' AND (draft_text<>'' OR card_text<>'') LIMIT 1",
+            )
+            .bind(me.dealership_id)
+            .bind(customer)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            if has_plan.is_some() && build_plan(pool, &me, customer).await.is_ok() {
+                rewritten += 1;
+            }
         }
     }
+    let rewritten_note = if rewritten > 0 {
+        format!(" Upcoming drafts for {rewritten} customer{} were rewritten in {to_name}'s voice.", if rewritten == 1 { "" } else { "s" })
+    } else {
+        String::new()
+    };
     back(&format!(
-        "Moved {moved} customer{} from {from_name} to {to_name}. {briefs} introduction{} written by AI and waiting in {to_name}'s follow-ups.",
+        "Moved {moved} customer{} from {from_name} to {to_name}. {briefs} introduction{} written by AI and waiting in {to_name}'s follow-ups.{rewritten_note}",
         if moved == 1 { "" } else { "s" },
         if briefs == 1 { "" } else { "s" }
     ))
