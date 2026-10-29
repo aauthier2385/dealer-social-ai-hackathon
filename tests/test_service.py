@@ -196,3 +196,36 @@ class PrivacyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UpstreamErrorTests(unittest.TestCase):
+    def test_out_of_credits_is_reported_plainly_and_logged(self):
+        body = json.dumps(
+            {
+                "error": {
+                    "type": "insufficient_quota",
+                    "code": "billing_hard_limit",
+                    "message": "secret prompt echo",
+                }
+            }
+        ).encode()
+        app = create_app(settings(), FakeMeta(status=402, body=body))
+        with self.assertLogs("dsai", level="WARNING") as logs:
+            r = ping(app)
+        self.assertEqual(r.status, 503)
+        self.assertEqual(r.json()["error"], "ai_quota")
+        self.assertIn("out of credits", r.json()["message"])
+        text = " ".join(logs.output)
+        self.assertIn("status=402", text)
+        self.assertIn("type=insufficient_quota", text)
+        self.assertNotIn("secret prompt echo", text)
+
+    def test_other_upstream_errors_are_logged_with_their_type(self):
+        body = json.dumps(
+            {"error": {"type": "invalid_request_error", "code": "model_not_found"}}
+        ).encode()
+        app = create_app(settings(), FakeMeta(status=404, body=body))
+        with self.assertLogs("dsai", level="WARNING") as logs:
+            r = ping(app)
+        self.assertEqual(r.status, 502)
+        self.assertIn("code=model_not_found", " ".join(logs.output))

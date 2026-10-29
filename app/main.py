@@ -86,6 +86,7 @@ META_MESSAGES = {
     "ai_busy": "The AI is busy with other requests. Try again in a few seconds.",
     "ai_unavailable": "The AI service is temporarily unavailable. Try again shortly.",
     "ai_bad_response": "The AI returned something unexpected. Try again.",
+    "ai_quota": "The AI account is out of credits or over its limit. Check the Meta dashboard.",
     "invalid_input": "That request could not be sent to the AI.",
 }
 AUDIO_TYPES = {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"}

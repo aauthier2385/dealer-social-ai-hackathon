@@ -67,6 +67,11 @@ class MetaBadResponse(MetaError):
     code = "ai_bad_response"
 
 
+class MetaQuota(MetaError):
+    http_status = 503
+    code = "ai_quota"
+
+
 class MetaInputError(MetaError):
     http_status = 400
     code = "invalid_input"
@@ -195,7 +200,12 @@ class MetaClient:
         if status == 413:
             raise MetaInputError("upstream says the upload is too large")
         if status != 200:
-            raise MetaBadResponse(f"upstream status {status}")
+            # Meta's error type and code (never its message, which can echo what was sent).
+            kind = _error_kind(data)
+            log.warning("%s upstream_error status=%s %s", event, status, kind)
+            if status == 402 or "quota" in kind or "credit" in kind or "billing" in kind:
+                raise MetaQuota(f"upstream status {status} {kind}")
+            raise MetaBadResponse(f"upstream status {status} {kind}")
         if len(data) > max_bytes:
             raise MetaBadResponse("response too large")
         try:
@@ -395,6 +405,23 @@ class MetaClient:
         return image, ChatResult(
             text="", model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
         )
+
+
+def _error_kind(data: bytes) -> str:
+    """'type=... code=...' from an error body, or ''. Only short identifiers are kept."""
+    try:
+        body = json.loads(data[:4096])
+    except ValueError:
+        return ""
+    error = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(error, dict):
+        return ""
+    parts = []
+    for key in ("type", "code"):
+        value = error.get(key)
+        if isinstance(value, (str, int)) and len(str(value)) <= 60:
+            parts.append(f"{key}={value}")
+    return " ".join(parts).lower()
 
 
 def _find_image(payload: dict) -> str | None:
