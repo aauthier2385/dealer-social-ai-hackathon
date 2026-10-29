@@ -108,8 +108,8 @@ server needs no audio software and never receives anything but the format Meta e
   removed, including the GPS location phones hide in photos.
 - **SAM 3.1** is asked two questions at once: every `face` and every `license plate`, each with a
   pixel mask (Meta's official `meta-sam-parser` reads the records).
-- **Code decides what to blur.** The largest faces (the customer and family posing with the
-  vehicle) are kept; smaller faces in the background are blurred; every license plate is blurred.
+- **Code decides what to blur.** The main group is kept: the largest face plus faces nearly as
+  large standing close to it (the customer and family posing with the vehicle); smaller faces in the background are blurred; every license plate is blurred.
   Staff can tap a face to keep or blur it, and can blur every face with one switch.
 - Blurring is strong (pixelated, then smoothed) and covers each mask grown a little plus an oval
   over the face, so a loose mask cannot leave part of a face showing.
@@ -218,3 +218,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 28 | Integration into The Dealer Social demo app (copied to `integration/`): voice note in the customer's chat with review and name fixes, three new tables, Follow-ups tab after Appointments with Use draft / Mark done / Snooze / Skip and a due badge, next-follow-up bar in each chat, admin store view, reassign-with-introductions handoff, at-risk brief, fictional demo store seed |
 | Oct 29 | Feature 5, privacy blur for store photos: SAM 3.1 faces and license plates (two requests at once), main subjects kept and background people blurred in code, tap to keep or blur, metadata and GPS removed, fails closed, playground before/after view, 148 tests |
 | Oct 29 | Privacy blur in The Dealer Social's News Feed composer (staff only, copied to `integration/`): blur bystanders and plates before posting, tap to keep or blur, the blurred photo replaces the chosen file |
+| Oct 29 | Privacy blur real-run fix (a crowded go-kart track): the main group must stand together, so similar-size strangers are blurred by default; face boxes stay lined up on tall photos, 151 tests |

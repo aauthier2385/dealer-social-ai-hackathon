@@ -266,3 +266,27 @@ class InputTests(unittest.TestCase):
         )
         self.assertEqual(post(app, make_photo()).status, 200)
         self.assertEqual(post(app, make_photo()).status, 429)
+
+
+class MainGroupTests(unittest.TestCase):
+    """Real run: a crowded go-kart track kept other drivers whose faces were nearly as large."""
+
+    def face(self, n, box):
+        x1, y1, x2, y2 = box
+        return photo.Detected(f"F{n}", "face", x1, y1, x2, y2, Image.new("L", (1, 1)), 0.9)
+
+    def test_similar_size_face_far_away_is_not_in_the_group(self):
+        faces = [
+            self.face(1, (300, 120, 420, 270)),  # customer
+            self.face(2, (440, 140, 540, 270)),  # child next to them
+            self.face(3, (700, 100, 800, 220)),  # driver in another cart, similar size, far away
+            self.face(4, (20, 300, 120, 420)),  # another driver, far the other way
+        ]
+        self.assertEqual(photo.main_group(faces), {"F1", "F2"})
+
+    def test_group_can_chain_side_by_side(self):
+        faces = [self.face(n, (100 + 110 * n, 100, 200 + 110 * n, 220)) for n in range(1, 6)]
+        self.assertEqual(len(photo.main_group(faces)), 4)  # never more than MAX_KEPT
+
+    def test_no_faces(self):
+        self.assertEqual(photo.main_group([]), set())

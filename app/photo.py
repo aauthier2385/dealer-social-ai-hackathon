@@ -38,7 +38,8 @@ MAX_SOURCE_PIXELS = 50_000_000  # refuses decompression bombs
 MAX_SIDE = 2048  # long side sent to SAM and returned
 MIN_SIDE = 64
 FORMATS = {"JPEG", "PNG", "WEBP", "MPO"}  # MPO: some phones save JPEGs this way
-KEEP_RATIO = 0.4  # a face at least 40% the size of the largest face is a main subject
+KEEP_RATIO = 0.4  # a main subject's face is at least 40% the size of the largest face...
+NEAR = 2.2  # ...and within 2.2 face-widths of someone already in the main group
 MAX_KEPT = 4
 MAX_POINTS = 12
 
@@ -159,6 +160,31 @@ def parse_masks(text: str, kind: str, size: tuple[int, int]) -> list[Detected]:
     return found
 
 
+def main_group(faces: list[Detected]) -> set[str]:
+    """The people posing together: the largest face, plus faces nearly as large that are close
+    to someone already in the group (a family stands together; strangers in a crowd do not)."""
+    by_size = sorted(faces, key=lambda f: f.area, reverse=True)
+    if not by_size:
+        return set()
+    largest = by_size[0]
+    group = [largest]
+
+    def center(f: Detected) -> tuple[float, float]:
+        return (f.left + f.right) / 2, (f.top + f.bottom) / 2
+
+    def near(a: Detected, b: Detected) -> bool:
+        (ax, ay), (bx, by) = center(a), center(b)
+        width = max(a.right - a.left, b.right - b.left)
+        return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5 <= NEAR * width
+
+    for face in by_size[1:]:
+        if len(group) >= MAX_KEPT:
+            break
+        if face.area >= KEEP_RATIO * largest.area and any(near(face, g) for g in group):
+            group.append(face)
+    return {f.id for f in group}
+
+
 def decide(
     faces: list[Detected],
     plates: list[Detected],
@@ -168,9 +194,7 @@ def decide(
 ) -> None:
     """Choose what to blur. Faces: the main subjects stay, background people are blurred.
     A tap on a face overrides the default. License plates are always blurred."""
-    largest = max((f.area for f in faces), default=0)
-    by_size = sorted(faces, key=lambda f: f.area, reverse=True)
-    main = {f.id for f in by_size[:MAX_KEPT] if largest and f.area >= KEEP_RATIO * largest}
+    main = main_group(faces)
     for face in faces:
         if any(face.contains(x, y) for x, y in blur_points):
             face.decision, face.reason = "blurred", "you chose to blur"
