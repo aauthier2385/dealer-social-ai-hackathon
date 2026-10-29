@@ -7,8 +7,8 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026), S
 > **Everything in this repository was built during the Hackathon.** It is a new, standalone
 > service. The existing product it plugs into, [The Dealer Social](https://www.thedealersocial.com),
 > is not part of this repository. Every file and line added to that app during the Hackathon
-> (voice notes in the chat, the Follow-ups tab, handoff, the at-risk brief and the privacy blur
-> in the News Feed composer) is copied into
+> (voice notes in the chat, the Follow-ups tab, handoff, the at-risk brief, and the privacy blur and Truckiversary
+> posts in the News Feed composer) is copied into
 > [`integration/`](integration/) so every piece of new work is visible here.
 
 ## The problem
@@ -235,3 +235,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 29 | Privacy blur in The Dealer Social's News Feed composer (staff only, copied to `integration/`): blur bystanders and plates before posting, tap to keep or blur, the blurred photo replaces the chosen file |
 | Oct 29 | Privacy blur real-run fix (a crowded go-kart track): the main group must stand together, so similar-size strangers are blurred by default; face boxes stay lined up on tall photos, 151 tests |
 | Oct 29 | Feature 6, Truckiversary posts: Muse Image paints the celebration scene, the real (privacy-blurred) photo goes on top untouched, code draws the words, Muse Spark writes a checked caption in the salesperson's voice, customer consent required, playground section, 165 tests |
+| Oct 29 | Truckiversary posts in The Dealer Social's News Feed composer (staff only, copied to `integration/`): customer details and consent, the card replaces the photo, the caption fills the post box in the salesperson's voice |

@@ -68,9 +68,118 @@
     var allBox = el("input");
     allBox.type = "checkbox";
     all.append(allBox, document.createTextNode(" Blur every face"));
-    row.append(go, all);
+    var party = el("button", "btn sm ghost", "🎉 Truckiversary post");
+    party.type = "button";
+    row.append(go, all, party);
     panel.append(row, el("span", "pb-status", "SAM 3.1 finds faces and license plates. The customer stays sharp; people in the background and plates are blurred."));
     go.addEventListener("click", function () { run(panel, allBox.checked); });
+    party.addEventListener("click", function () { cardForm(panel); });
+  }
+
+  // ---------- Truckiversary post (Muse Image + Muse Spark) ----------
+  function cardForm(panel) {
+    panel.replaceChildren();
+    panel.append(el("span", "pb-status", "Turn this delivery photo into an anniversary post. Muse Image paints the celebration; your photo goes on top untouched, and the caption is written in your voice."));
+    var grid = el("div", "pb-row");
+    function field(label, attrs) {
+      var l = el("label", "pb-status");
+      var i = el("input");
+      Object.keys(attrs).forEach(function (k) { i.setAttribute(k, attrs[k]); });
+      i.style.marginLeft = "6px";
+      l.append(document.createTextNode(label), i);
+      grid.append(l);
+      return i;
+    }
+    var first = field("Customer first name", { maxlength: "40", size: "12" });
+    var vehicle = field("Vehicle", { maxlength: "60", size: "20", placeholder: "Ford Ranger Lariat" });
+    var color = field("Color", { maxlength: "30", size: "12", placeholder: "optional" });
+    var years = field("Years", { type: "number", min: "1", max: "30", value: "1", style: "width:4em" });
+    panel.append(grid);
+    var checks = el("div", "pb-row");
+    var blurL = el("label", "pb-status"), blurB = el("input");
+    blurB.type = "checkbox"; blurB.checked = true;
+    blurL.append(blurB, document.createTextNode(" Blur bystanders and plates first"));
+    var okL = el("label", "pb-status"), okB = el("input");
+    okB.type = "checkbox";
+    okL.append(okB, document.createTextNode(" The customer said it's OK to feature them"));
+    checks.append(blurL, okL);
+    panel.append(checks);
+    var row = el("div", "pb-row");
+    var make = el("button", "btn sm", "Make the post");
+    make.type = "button";
+    var back = el("button", "btn sm ghost", "Back");
+    back.type = "button";
+    var msg = el("span", "pb-err");
+    row.append(make, back, msg);
+    panel.append(row);
+    back.addEventListener("click", function () { offer(panel); });
+    make.addEventListener("click", function () {
+      msg.textContent = "";
+      if (!okB.checked) { msg.textContent = "Get the customer's OK to be featured first, then tick the box."; return; }
+      if (!first.value.trim() || !vehicle.value.trim()) { msg.textContent = "Fill in the customer's first name and the vehicle."; return; }
+      makeCard(panel, { customer_first_name: first.value.trim(), vehicle: vehicle.value.trim(), vehicle_color: color.value.trim(),
+        years: parseInt(years.value, 10) || 1, blur_bystanders: blurB.checked, customer_consent: true });
+    });
+    first.focus();
+  }
+
+  function toDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  }
+
+  function makeCard(panel, details) {
+    if (busy || !original) return;
+    busy = true;
+    panel.replaceChildren(el("span", "pb-status", "Painting the celebration and writing your caption… (about a minute)"));
+    photoBody(original).then(function (body) { return toDataUrl(body.blob); }).then(function (url) {
+      details.photo = url;
+      return fetch("/ai/truckiversary", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(details),
+      });
+    }).then(function (resp) {
+      return resp.json().catch(function () { return {}; }).then(function (data) {
+        if (!resp.ok) throw new Error(data.message || "Could not make the post.");
+        var bin = atob(String(data.image).split(",")[1] || "");
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        useFile(new File([bytes], "truckiversary-" + details.customer_first_name.toLowerCase() + ".jpg", { type: "image/jpeg" }));
+        var text = document.querySelector('#postForm textarea[name="content"]');
+        if (text) text.value = data.caption;
+        preview.hidden = true;
+        var c = data.checks || {};
+        var parts = ["🎉 Your post is ready: real photo untouched by AI"];
+        if (c.bystanders_blurred) parts.push(c.faces_blurred + " bystander" + (c.faces_blurred === 1 ? "" : "s") + " blurred");
+        if (c.location_removed) parts.push("GPS location removed");
+        panel.replaceChildren(el("span", "pb-ok", parts.join(" · ") + ". The caption is in the box above; edit it if you like, then Post."));
+        var stage = el("div", "pb-stage");
+        var img = el("img");
+        img.src = data.image;
+        img.alt = "Anniversary post";
+        stage.append(img);
+        var row = el("div", "pb-row");
+        var undo = el("button", "btn sm ghost", "Use original photo");
+        undo.type = "button";
+        undo.addEventListener("click", function () {
+          useFile(original);
+          if (text && text.value === data.caption) text.value = "";
+          preview.hidden = false;
+          offer(panel);
+        });
+        row.append(undo);
+        panel.append(stage, row);
+      });
+    }).catch(function (e) {
+      panel.replaceChildren(el("p", "pb-err", e.message || "Could not make the post."));
+      var again = el("button", "btn sm ghost", "Back");
+      again.type = "button";
+      again.addEventListener("click", function () { offer(panel); });
+      panel.append(again);
+    }).then(function () { busy = false; });
   }
 
   function run(panel, blurAll) {

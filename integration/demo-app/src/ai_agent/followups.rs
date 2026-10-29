@@ -75,7 +75,7 @@ async fn load_facts(p: &PgPool, store: Uuid, customer: Uuid, limit: i64) -> Vec<
 
 /// The salesperson's own recent texts to customers: the AI copies their voice from these.
 /// The AI service swaps customer names out and ignores anything sensitive before using them.
-async fn voice_samples(p: &PgPool, store: Uuid, salesperson: Uuid) -> Vec<String> {
+pub async fn voice_samples(p: &PgPool, store: Uuid, salesperson: Uuid) -> Vec<String> {
     sqlx::query_as::<_, (String,)>(
         "SELECT m.body FROM messages m JOIN users u ON u.id=m.recipient_id \
          WHERE m.sender_id=$1 AND m.dealership_id=$2 AND u.role='customer' \

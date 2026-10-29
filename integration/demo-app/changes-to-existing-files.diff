@@ -19,6 +19,22 @@ index 4b741b3..1f423f9 100644
  
  # Immutable ID of your local test platform-owner account (required for Superadmin).
  PLATFORM_OWNER_USER_ID=
+diff --git a/src/db.rs b/src/db.rs
+index 4820a38..ace9134 100644
+--- a/src/db.rs
++++ b/src/db.rs
+@@ -95,6 +95,11 @@ pub async fn connect(url: &str) -> PgPool {
+ /// PostgreSQL volume when upgrading.
+ pub async fn migrate(p: &PgPool) {
+     let statements = [
++        // Hackathon deploy: create the two base tables that init.sql creates locally, so a brand
++        // new Render database works on the first start without running init.sql by hand.
++        "CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, username TEXT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT now())",
++        "CREATE TABLE IF NOT EXISTS posts (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, content TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT now())",
++        "CREATE INDEX IF NOT EXISTS posts_created_at_idx ON posts(created_at DESC)",
+         // ---- users -------------------------------------------------------------------
+         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT now()",
+         "ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT",
 diff --git a/src/main.rs b/src/main.rs
 index d0bd9d3..e982ff9 100644
 --- a/src/main.rs

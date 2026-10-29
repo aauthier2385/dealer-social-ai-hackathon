@@ -141,6 +141,12 @@ pub async fn photo_blur(user: Uuid, photo: Vec<u8>, content_type: &str, query: &
     send_limited(&path, user, content_type, photo, Duration::from_secs(120), MAX_PHOTO_REPLY).await
 }
 
+/// Feature 6: a Truckiversary card. The reply carries the finished card inline.
+pub async fn truckiversary(user: Uuid, body: &Value) -> Result<Value, AiError> {
+    let bytes = serde_json::to_vec(body).map_err(|_| AiError::new(400, "Could not prepare the request."))?;
+    send_limited("/v1/truckiversary", user, "application/json", bytes, Duration::from_secs(200), MAX_PHOTO_REPLY).await
+}
+
 pub async fn post_json(path: &str, user: Uuid, body: &Value) -> Result<Value, AiError> {
     let bytes = serde_json::to_vec(body).map_err(|_| AiError::new(400, "Could not prepare the request."))?;
     send(path, user, "application/json", bytes, Duration::from_secs(90)).await

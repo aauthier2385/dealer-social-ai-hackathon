@@ -1,10 +1,12 @@
-//! Privacy blur before a store photo is posted to the News Feed (staff only).
+//! Privacy blur and Truckiversary posts in the News Feed composer (staff only).
 //!
 //! The composer sends the chosen photo here; this app forwards it to the AI service, where SAM 3.1
 //! finds every face and license plate. Background people and plates come back blurred and all
 //! metadata (including GPS location) is removed. Staff can tap a face to keep or blur it.
 
 use actix_web::{web, HttpRequest, HttpResponse};
+use serde::Deserialize;
+use serde_json::json;
 
 use super::client;
 use super::voice::json_error;
@@ -12,12 +14,18 @@ use crate::routes::ui::current_user;
 
 const MAX_PHOTO: usize = 12 * 1024 * 1024;
 const PHOTO_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp"];
+const MAX_CARD_REQUEST: usize = 18 * 1024 * 1024; // the photo travels as a base64 data URL
 
 pub fn routes(c: &mut web::ServiceConfig) {
     c.service(
         web::resource("/ai/photo-blur")
             .app_data(web::PayloadConfig::new(MAX_PHOTO))
             .route(web::post().to(blur)),
+    )
+    .service(
+        web::resource("/ai/truckiversary")
+            .app_data(web::JsonConfig::default().limit(MAX_CARD_REQUEST))
+            .route(web::post().to(truckiversary)),
     );
 }
 
@@ -66,6 +74,65 @@ async fn blur(r: HttpRequest, p: web::Data<sqlx::PgPool>, body: web::Bytes) -> H
         return json_error(400, "Choose a photo first.");
     }
     match client::photo_blur(me.id, body.to_vec(), &content_type, &clean_query(r.query_string())).await {
+        Ok(v) => HttpResponse::Ok().insert_header(("Cache-Control", "no-store")).json(v),
+        Err(e) => json_error(if e.status == 429 { 429 } else if e.status >= 500 || e.status == 401 { 503 } else { 400 }, &e.message),
+    }
+}
+
+#[derive(Deserialize)]
+struct CardForm {
+    photo: String,
+    customer_first_name: String,
+    vehicle: String,
+    #[serde(default)]
+    vehicle_color: String,
+    #[serde(default = "one")]
+    years: u32,
+    #[serde(default)]
+    customer_consent: bool,
+    #[serde(default = "yes")]
+    blur_bystanders: bool,
+}
+
+fn one() -> u32 {
+    1
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// Feature 6: a Truckiversary post. The browser sends the photo and the customer details; this
+/// app adds who is posting, the store, and the salesperson's own recent texts for their voice.
+async fn truckiversary(r: HttpRequest, p: web::Data<sqlx::PgPool>, f: web::Json<CardForm>) -> HttpResponse {
+    let Some(me) = current_user(&r, p.get_ref()).await else {
+        return json_error(401, "Please sign in again.");
+    };
+    if !me.is_staff() {
+        return json_error(403, "Only staff can make Truckiversary posts.");
+    }
+    if !client::enabled() {
+        return json_error(503, "The AI assistant is not set up on this site.");
+    }
+    if !f.customer_consent {
+        return json_error(400, "Get the customer's OK to be featured first, then tick the box.");
+    }
+    if !f.photo.starts_with("data:image/") {
+        return json_error(400, "Choose a photo first.");
+    }
+    let body = json!({
+        "photo": f.photo,
+        "customer_first_name": f.customer_first_name,
+        "vehicle": f.vehicle,
+        "vehicle_color": f.vehicle_color,
+        "years": f.years,
+        "customer_consent": true,
+        "blur_bystanders": f.blur_bystanders,
+        "salesperson_name": me.name,
+        "store_name": me.dealership_name,
+        "voice_samples": super::followups::voice_samples(p.get_ref(), me.dealership_id, me.id).await,
+    });
+    match client::truckiversary(me.id, &body).await {
         Ok(v) => HttpResponse::Ok().insert_header(("Cache-Control", "no-store")).json(v),
         Err(e) => json_error(if e.status == 429 { 429 } else if e.status >= 500 || e.status == 401 { 503 } else { 400 }, &e.message),
     }
