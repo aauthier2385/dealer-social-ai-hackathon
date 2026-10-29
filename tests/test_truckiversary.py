@@ -253,3 +253,49 @@ class InputTests(unittest.TestCase):
 
 # Unused-import guard for helpers the tests share with test_photo.
 _ = (BYSTANDER, CUSTOMER)
+
+
+class ImageFormatTests(unittest.TestCase):
+    """The image can arrive in slightly different shapes; all of them should work."""
+
+    def run_with(self, output):
+        class Meta(FakeMeta):
+            def __call__(self, url, headers, body, timeout, max_bytes):
+                request = json.loads(body)
+                if url.endswith("/responses") and request.get("model") == "muse-image-1.0":
+                    payload = {
+                        "status": "completed",
+                        "model": "muse-image-1.0",
+                        "output": output,
+                        "usage": {},
+                    }
+                    return 200, {}, json.dumps(payload).encode()
+                return super().__call__(url, headers, body, timeout, max_bytes)
+
+        return post(create_app(settings(), Meta()), request(blur_bystanders=False))
+
+    def test_wrapped_base64_and_data_urls(self):
+        b64 = base64.b64encode(scene_png()).decode()
+        wrapped = "\n".join(b64[i : i + 76] for i in range(0, len(b64), 76))
+        for output in [
+            [{"type": "image_generation_call", "result": wrapped}],
+            [{"type": "image_generation_call", "result": "data:image/png;base64," + b64}],
+            [
+                {
+                    "type": "message",
+                    "content": [
+                        {"type": "output_image", "image_url": "data:image/png;base64," + b64}
+                    ],
+                }
+            ],
+            [{"type": "message", "content": [{"type": "output_image", "b64_json": b64}]}],
+        ]:
+            self.assertEqual(self.run_with(output).status, 200, str(output)[:80])
+
+    def test_missing_image_is_logged_with_a_reason(self):
+        with self.assertLogs("dsai", level="WARNING") as logs:
+            r = self.run_with([{"type": "reasoning"}, {"type": "message", "content": []}])
+        self.assertEqual(r.status, 502)
+        self.assertTrue(
+            any("no image in the response" in line and "reasoning" in line for line in logs.output)
+        )

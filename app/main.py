@@ -93,6 +93,8 @@ PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 def _meta_error(exc: MetaError) -> JSONResponse:
+    # The reason is our own wording (e.g. "no image in the response"), never customer content.
+    logging.getLogger("dsai").warning("request_failed code=%s reason=%s", exc.code, exc)
     return _error(exc.http_status, exc.code, META_MESSAGES[exc.code], exc.retry_after)
 
 

@@ -375,26 +375,51 @@ class MetaClient:
         status = payload.get("status")
         if status not in (None, "completed"):
             raise MetaBadResponse(f"image generation did not complete: {status}")
-        encoded = None
-        for item in payload.get("output") or []:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") == "image_generation_call" and isinstance(item.get("result"), str):
-                encoded = item["result"]
-                break
-            for part in item.get("content") or []:
-                if isinstance(part, dict) and part.get("type") == "refusal":
-                    raise MetaBadResponse("image generation was refused")
+        encoded = _find_image(payload)
         if not encoded:
-            raise MetaBadResponse("no image in the response")
+            kinds = [
+                str(item.get("type"))
+                for item in payload.get("output") or []
+                if isinstance(item, dict)
+            ]
+            raise MetaBadResponse(f"no image in the response (status={status}, output={kinds[:6]})")
+        if encoded.startswith("data:"):
+            encoded = encoded.split(",", 1)[-1]
         try:
-            image = base64.b64decode(encoded, validate=True)
+            image = base64.b64decode("".join(encoded.split()) + "==")
         except ValueError as exc:
             raise MetaBadResponse("image was not valid base64") from exc
+        if len(image) < 100:
+            raise MetaBadResponse("image was empty")
         model = payload.get("model") if isinstance(payload.get("model"), str) else self.image_model
         return image, ChatResult(
             text="", model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
         )
+
+
+def _find_image(payload: dict) -> str | None:
+    """The generated image, wherever this version of the API puts it: an image_generation_call
+    item's result (documented), or an output_image content part. Raises on a refusal."""
+    for item in payload.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "image_generation_call":
+            for key in ("result", "b64_json", "image"):
+                if isinstance(item.get(key), str) and item[key]:
+                    return item[key]
+        for part in item.get("content") or []:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "refusal":
+                raise MetaBadResponse("image generation was refused")
+            if part.get("type") in ("output_image", "image"):
+                for key in ("b64_json", "image_url", "result", "data"):
+                    value = part.get(key)
+                    if isinstance(value, dict):
+                        value = value.get("url")
+                    if isinstance(value, str) and value and not value.startswith("http"):
+                        return value
+    return None
 
 
 def _usage(payload: dict) -> dict:
