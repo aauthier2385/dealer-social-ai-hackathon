@@ -12,6 +12,7 @@ from dataclasses import dataclass
 DEFAULT_BASE_URL = "https://api.meta.ai/v1"
 DEFAULT_TEXT_MODEL = "muse-spark-1.3"
 DEFAULT_VOICE_MODEL = "muse-voice-transcribe-1.0"
+DEFAULT_SAM_MODEL = "sam-3.1"
 REASONING_EFFORTS = ("minimal", "low", "medium", "high")
 MIN_TOKEN_LENGTH = 32
 
@@ -28,6 +29,7 @@ class Settings:
     meta_base_url: str
     text_model: str
     voice_model: str
+    sam_model: str
     reasoning_effort: str
     max_concurrency: int
     per_client_per_minute: int
@@ -35,6 +37,8 @@ class Settings:
     global_per_day: int
     voice_per_client_per_minute: int
     voice_global_per_day: int
+    photo_per_client_per_minute: int
+    photo_global_per_day: int
     playground_enabled: bool
 
     def __repr__(self) -> str:  # never format key material
@@ -99,6 +103,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     model = _model(env, "META_TEXT_MODEL", DEFAULT_TEXT_MODEL)
     voice_model = _model(env, "META_VOICE_MODEL", DEFAULT_VOICE_MODEL)
+    sam_model = _model(env, "META_SAM_MODEL", DEFAULT_SAM_MODEL)
 
     effort = env.get("META_REASONING_EFFORT", "low").strip().lower()
     if effort not in REASONING_EFFORTS:
@@ -111,6 +116,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         meta_base_url=base_url,
         text_model=model,
         voice_model=voice_model,
+        sam_model=sam_model,
         reasoning_effort=effort,
         max_concurrency=_int(env, "MAX_CONCURRENT_META_CALLS", 4, 1, 32),
         per_client_per_minute=_int(env, "RATE_LIMIT_PER_CLIENT_PER_MINUTE", 20, 1, 1000),
@@ -118,5 +124,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         global_per_day=_int(env, "RATE_LIMIT_GLOBAL_PER_DAY", 1000, 1, 1000000),
         voice_per_client_per_minute=_int(env, "VOICE_LIMIT_PER_CLIENT_PER_MINUTE", 6, 1, 100),
         voice_global_per_day=_int(env, "VOICE_LIMIT_GLOBAL_PER_DAY", 300, 1, 100000),
+        photo_per_client_per_minute=_int(env, "PHOTO_LIMIT_PER_CLIENT_PER_MINUTE", 10, 1, 100),
+        photo_global_per_day=_int(env, "PHOTO_LIMIT_GLOBAL_PER_DAY", 500, 1, 100000),
         playground_enabled=_bool(env, "PLAYGROUND_ENABLED", True),
     )

@@ -110,6 +110,34 @@
     </div>
   </section>
 
+  <section class="card" id="photo-card" aria-labelledby="photo-title">
+    <div class="section-head">
+      <h2 id="photo-title">Privacy blur for store photos</h2>
+      <span class="models">SAM 3.1</span>
+    </div>
+    <p class="hint">Before a delivery photo is posted, SAM 3.1 finds every face and license plate. The customer and family stay sharp; people in the background and every plate are blurred, and the photo&rsquo;s hidden location data is removed. Tap a face to change it.</p>
+    <div class="row gap">
+      <label class="file-btn" for="photo-file">Choose photo&hellip;</label>
+      <input id="photo-file" type="file" accept="image/*">
+      <span class="file-name" id="photo-name">No photo yet</span>
+    </div>
+    <div class="row">
+      <label class="check-label"><input id="photo-all" type="checkbox"> Blur every face</label>
+      <button id="photo-btn" type="button" disabled>Blur bystanders</button>
+      <span class="count" id="photo-progress" aria-live="polite"></span>
+    </div>
+    <p class="error" id="photo-error" role="alert" hidden></p>
+    <div id="photo-result" hidden>
+      <div class="checks" id="photo-checks"></div>
+      <div class="photo-pair">
+        <figure><figcaption>Before</figcaption><img id="photo-before" alt="Original photo"></figure>
+        <figure><figcaption>After &middot; <span class="count">tap a face to keep or blur it</span></figcaption><div class="photo-stage" id="photo-stage"><img id="photo-after" alt="Photo with bystanders blurred"></div></figure>
+      </div>
+      <div class="row gap"><a class="file-btn" id="photo-download" download="store-photo-blurred.jpg">Download blurred photo</a></div>
+      <p class="foot" id="photo-meta"></p>
+    </div>
+  </section>
+
   <section class="card" id="risk-card" aria-labelledby="risk-title">
     <div class="section-head">
       <h2 id="risk-title">Relationships at risk</h2>
@@ -159,7 +187,6 @@
   <section class="card muted" aria-labelledby="next-title">
     <h2 id="next-title">Coming during the hackathon</h2>
     <ul class="soon">
-      <li>Automatic privacy blur for store photos (SAM 3.1)</li>
       <li>Truckiversary posts (Muse Image)</li>
     </ul>
   </section>

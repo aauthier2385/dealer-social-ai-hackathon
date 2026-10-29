@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from app import __version__, audio, handoff, memory, planner, risk
+from app import __version__, audio, handoff, memory, photo, planner, risk
 from app.config import Settings, load_settings
 from app.meta_client import MetaClient, MetaError, Transport
 from app.ratelimit import RateLimiter
@@ -48,7 +48,7 @@ PING_SYSTEM_PROMPT = (
 
 PLAYGROUND_CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
-    "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    "img-src 'self' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 
 
@@ -89,6 +89,7 @@ META_MESSAGES = {
     "invalid_input": "That request could not be sent to the AI.",
 }
 AUDIO_TYPES = {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"}
+PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 def _meta_error(exc: MetaError) -> JSONResponse:
@@ -266,6 +267,41 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
             return _meta_error(exc)
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
+    async def privacy_blur(request: Request) -> Response:
+        """Feature 5: a store photo -> the same photo with bystanders' faces and plates blurred."""
+        if not token_ok(request, settings.service_token):
+            return _error(401, "unauthorized", "Missing or wrong service token.")
+        content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        if content_type not in PHOTO_TYPES:
+            return _error(415, "unsupported_media", "Send a JPEG, PNG or WebP photo.")
+        allowed, wait = limiter.allow_all(
+            [
+                ("photo-" + client_key(request), settings.photo_per_client_per_minute, 60),
+                ("photo-global-day", settings.photo_global_per_day, 86400),
+                ("global-minute", settings.global_per_minute, 60),
+                ("global-day", settings.global_per_day, 86400),
+            ]
+        )
+        if not allowed:
+            return _error(429, "rate_limited", "Too many photos. Try again shortly.", wait)
+        q = request.query_params
+        try:
+            data = await read_bytes(request, photo.MAX_UPLOAD_BYTES)
+            result = await photo.privacy_blur(
+                meta,
+                data,
+                keep=q.get("keep", "")[:400],
+                blur_points=q.get("blur", "")[:400],
+                blur_all_faces=q.get("blur_all_faces", "") in ("1", "true"),
+            )
+        except RequestTooLarge:
+            return _error(413, "too_large", "That photo is too large. Keep it under 12 MB.")
+        except photo.PhotoError as exc:
+            return _error(400, "invalid_photo", str(exc))
+        except MetaError as exc:
+            return _meta_error(exc)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
     async def risk_brief(request: Request) -> Response:
         """Feature 6: a store's customer list -> who needs attention this week, and why."""
         if not token_ok(request, settings.service_token):
@@ -309,6 +345,7 @@ def create_app(settings: Settings | None = None, transport: Transport | None = N
         Route("/v1/plan/touchpoints", plan_touchpoints, methods=["POST"]),
         Route("/v1/handoff/brief", handoff_brief, methods=["POST"]),
         Route("/v1/risk/brief", risk_brief, methods=["POST"]),
+        Route("/v1/photo/privacy-blur", privacy_blur, methods=["POST"]),
         Route("/favicon.ico", favicon, methods=["GET"]),
     ]
     if settings.playground_enabled:

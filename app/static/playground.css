@@ -141,3 +141,16 @@ button.copy { padding: 4px 10px; font-size: 12px; background: transparent; color
 .step { margin: 0; font-size: 14px; }
 .step b { font-weight: 700; }
 .rank { font: 700 22px var(--font); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+/* Privacy blur */
+.photo-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.photo-pair figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.photo-pair figcaption { font-weight: 600; font-size: 13px; }
+.photo-pair img { width: 100%; height: auto; display: block; border-radius: 8px; }
+.photo-stage { position: relative; }
+.face-box { position: absolute; padding: 0; background: transparent; border: 2px solid var(--ok); border-radius: 6px; cursor: pointer; }
+.face-box.blurred { border-color: var(--bad); border-style: dashed; }
+.face-box.plate { border-color: var(--warn); cursor: default; }
+.face-box span { position: absolute; left: 0; top: 100%; margin-top: 2px; font: 600 10px var(--font); background: var(--panel); color: var(--ink); padding: 1px 4px; border-radius: 4px; white-space: nowrap; }
+#photo-download { text-decoration: none; color: var(--ink); }
+

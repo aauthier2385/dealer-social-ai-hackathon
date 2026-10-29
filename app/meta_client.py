@@ -9,6 +9,7 @@ Safety rules, mirroring The Dealer Social's moderation module:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import secrets
@@ -28,6 +29,8 @@ MAX_RESPONSE_BYTES = 256 * 1024
 MAX_PROMPT_CHARS = 20_000
 TIMEOUT_SECONDS = 45.0
 TRANSCRIBE_TIMEOUT_SECONDS = 120.0
+SEGMENT_TIMEOUT_SECONDS = 60.0
+SEGMENT_MAX_RESPONSE_BYTES = 4 * 1024 * 1024  # masks for a crowded photo
 ALLOWED_ROLES = {"system", "user", "assistant"}
 
 # (url, headers, body, timeout_seconds, max_bytes) -> (status, headers, body)
@@ -145,7 +148,13 @@ class MetaClient:
             raise MetaInputError("prompt too long")
 
     async def _send(
-        self, event: str, path: str, body: bytes, content_type: str, timeout: float
+        self,
+        event: str,
+        path: str,
+        body: bytes,
+        content_type: str,
+        timeout: float,
+        max_bytes: int = MAX_RESPONSE_BYTES,
     ) -> dict:
         """POST to the Meta Model API and return parsed JSON. Logs only event, status, timing."""
         if not self.enabled:
@@ -165,7 +174,7 @@ class MetaClient:
             }
             try:
                 status, response_headers, data = await anyio.to_thread.run_sync(
-                    self._transport, url, headers, body, timeout, MAX_RESPONSE_BYTES
+                    self._transport, url, headers, body, timeout, max_bytes
                 )
             except MetaUnavailable:
                 waited = int((time.monotonic() - started) * 1000)
@@ -185,7 +194,7 @@ class MetaClient:
             raise MetaInputError("upstream says the upload is too large")
         if status != 200:
             raise MetaBadResponse(f"upstream status {status}")
-        if len(data) > MAX_RESPONSE_BYTES:
+        if len(data) > max_bytes:
             raise MetaBadResponse("response too large")
         try:
             payload = json.loads(data)
@@ -276,6 +285,69 @@ class MetaClient:
         if not isinstance(transcript, str) and not isinstance(turns, list):
             raise MetaBadResponse("transcription had no text")
         return payload
+
+    @property
+    def sam_model(self) -> str:
+        return self._settings.sam_model
+
+    async def segment(self, image: bytes, mime: str, concept: str) -> ChatResult:
+        """SAM 3.1 image segmentation for one short noun phrase ("face", "license plate").
+
+        Returns the raw segmentation record text (parsed by `meta_sam_parser`), the model and
+        timing. The image is sent inline as a data URL and is not stored (store=false).
+        """
+        phrase = " ".join(concept.split())
+        if not phrase or len(phrase) > 40:
+            raise MetaInputError("concept must be a short noun phrase")
+        request = {
+            "model": self._settings.sam_model,
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": phrase},
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:{mime};base64,{base64.b64encode(image).decode()}",
+                        },
+                    ],
+                }
+            ],
+            "metadata": {"mask_encoding": "one_bit"},
+            "store": False,
+        }
+        payload = await self._send(
+            "meta_segment",
+            "/responses",
+            json.dumps(request).encode(),
+            "application/json",
+            SEGMENT_TIMEOUT_SECONDS,
+            max_bytes=SEGMENT_MAX_RESPONSE_BYTES,
+        )
+        status = payload.get("status")
+        if status not in (None, "completed"):
+            raise MetaBadResponse(f"segmentation did not complete: {status}")
+        text = payload.get("output_text")
+        if not isinstance(text, str):
+            parts = []
+            for item in payload.get("output") or []:
+                if not isinstance(item, dict):
+                    continue
+                for part in item.get("content") or []:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "refusal":
+                        raise MetaBadResponse("segmentation was refused")
+                    if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                        parts.append(part["text"])
+            if not parts and not isinstance(payload.get("output"), list):
+                raise MetaBadResponse("segmentation had no output")
+            text = "".join(parts)
+        model = payload.get("model") if isinstance(payload.get("model"), str) else self.sam_model
+        return ChatResult(
+            text=text, model=model, latency_ms=payload["_latency_ms"], usage=_usage(payload)
+        )
 
 
 def _usage(payload: dict) -> dict:

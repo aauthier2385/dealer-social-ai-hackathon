@@ -28,7 +28,7 @@ visits. This service gives it a memory.
 | 2 | **Follow-up planner**: the dealership's own cadence (day-after check-in, thank-you card, 30-day call, first service, birthday, anniversary) plus life-event check-ins, drafted in the salesperson's voice; a human approves every message | Muse Spark | ✅ Built |
 | 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark | ✅ Built |
 | 4 | **Relationships at risk**: a manager brief of customers who need attention | Muse Spark | ✅ Built |
-| 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 | Planned |
+| 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 | ✅ Built |
 | 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image | Planned |
 
 ## How relationship memory stays honest
@@ -101,6 +101,20 @@ server needs no audio software and never receives anything but the format Meta e
   explanation built from the signals. The owner can never be a salesperson who has left, and an
   opener line must really mention the fact it cites.
 
+## How the privacy blur protects bystanders
+
+- The photo is checked, turned upright and shrunk **on this server**, and every bit of metadata is
+  removed, including the GPS location phones hide in photos.
+- **SAM 3.1** is asked two questions at once: every `face` and every `license plate`, each with a
+  pixel mask (Meta's official `meta-sam-parser` reads the records).
+- **Code decides what to blur.** The largest faces (the customer and family posing with the
+  vehicle) are kept; smaller faces in the background are blurred; every license plate is blurred.
+  Staff can tap a face to keep or blur it, and can blur every face with one switch.
+- Blurring is strong (pixelated, then smoothed) and covers each mask grown a little plus an oval
+  over the face, so a loose mask cannot leave part of a face showing.
+- **It fails closed.** If either segmentation call fails or returns malformed records, no photo is
+  returned at all, so an unblurred photo can never come back by mistake.
+
 ## Architecture
 
 ```
@@ -143,6 +157,7 @@ Meta Model API  (Muse Spark · Voice Transcribe · SAM 3.1 · Muse Image)
 | POST | `/v1/memory/voice-note` | Bearer token | Body: a mono 16-bit WAV (16/24 kHz, up to 5 min). Returns people, verified facts with sources, withheld details and a redacted transcript |
 | POST | `/v1/handoff/brief` | Bearer token | JSON: customer, vehicle, store, leaving and new salesperson, optional customer-since date and voice samples, verified facts. Returns a brief and a warm introduction |
 | POST | `/v1/risk/brief` | Bearer token | JSON: a store's customers (salesperson and whether they are still here, dates, overdue follow-ups, verified facts), the week, how many to write up, and whether to use the model. Returns ranked customers with signals, an explanation, a next step and an opener |
+| POST | `/v1/photo/privacy-blur` | Bearer token | Body: a JPEG, PNG or WebP photo (up to 12 MB). Optional `keep`/`blur` tap points and `blur_all_faces`. Returns the blurred photo (no metadata), every face and plate with its decision, and checks |
 | GET | `/playground` | none (page) | Browser test page; the token is typed in and kept in page memory only |
 
 ```bash
@@ -200,3 +215,4 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Transcription stutters ("Ranger Ranger") removed from people, facts and summary; quotes stay as heard; filler lines ("oh oh nice") no longer shown as the question, 116 tests |
 | Oct 28 | Feature 6, relationships at risk: signals scored and ranked in code, top customers explained by Muse Spark with every explanation citing its signals, code-only mode, sample store in the playground, 129 tests |
 | Oct 28 | Integration into The Dealer Social demo app (copied to `integration/`): voice note in the customer's chat with review and name fixes, three new tables, Follow-ups tab after Appointments with Use draft / Mark done / Snooze / Skip and a due badge, next-follow-up bar in each chat, admin store view, reassign-with-introductions handoff, at-risk brief, fictional demo store seed |
+| Oct 29 | Feature 5, privacy blur for store photos: SAM 3.1 faces and license plates (two requests at once), main subjects kept and background people blurred in code, tap to keep or blur, metadata and GPS removed, fails closed, playground before/after view, 148 tests |

@@ -2,3 +2,6 @@
 starlette==1.7.0
 uvicorn==0.54.0
 python-dotenv==1.2.3
+# Feature 5 (photo privacy blur): image handling, and Meta's official SAM 3 output parser.
+pillow==12.3.0
+meta-sam-parser==0.1.0

@@ -685,4 +685,125 @@
       $("risk-progress").textContent = "";
     }
   });
+
+  // ---------- Privacy blur (SAM 3.1) ----------
+  const photoFile = $("photo-file"), photoBtn = $("photo-btn"), photoError = $("photo-error");
+  const photoResult = $("photo-result");
+  let photoBlob = null, lastPhoto = null, beforeUrl = null;
+  // Taps are remembered as points in the photo ("x,y" -> "kept" | "blurred"), so they still
+  // apply when the photo is processed again.
+  let overrides = {};
+
+  // JPEG, PNG and WebP go as they are; anything else (e.g. HEIC) or a very large photo is
+  // re-encoded here as JPEG first. Either way the server strips all metadata.
+  async function photoBody(file) {
+    const ok = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
+    if (ok && file.size <= 10 * 1024 * 1024) return { blob: file, type: file.type };
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 3000 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.92));
+    return { blob, type: "image/jpeg" };
+  }
+
+  photoFile.addEventListener("change", () => {
+    const f = photoFile.files && photoFile.files[0];
+    if (!f) return;
+    photoBlob = f;
+    overrides = {};
+    $("photo-name").textContent = f.name + " · " + (f.size / 1024 / 1024).toFixed(1) + " MB";
+    photoBtn.disabled = false;
+    photoResult.hidden = true;
+  });
+
+  function points(kind) {
+    return Object.keys(overrides).filter((k) => overrides[k] === kind).join(";");
+  }
+
+  async function runBlur() {
+    photoError.hidden = true;
+    if (!token()) { show(photoError, "Paste the service token first."); return; }
+    if (!photoBlob) return;
+    photoBtn.disabled = true;
+    $("photo-progress").textContent = "Finding faces and plates with SAM 3.1…";
+    try {
+      const { blob, type } = await photoBody(photoBlob);
+      const query = new URLSearchParams();
+      const keep = points("kept"), blurPts = points("blurred");
+      if (keep) query.set("keep", keep);
+      if (blurPts) query.set("blur", blurPts);
+      if ($("photo-all").checked) query.set("blur_all_faces", "1");
+      const response = await fetch("/v1/photo/privacy-blur" + (query.toString() ? "?" + query : ""), {
+        method: "POST",
+        headers: { "Content-Type": type, "Authorization": "Bearer " + token() },
+        body: blob,
+      });
+      if (!response.ok) { photoResult.hidden = true; show(photoError, await readError(response)); return; }
+      if (beforeUrl) URL.revokeObjectURL(beforeUrl);
+      beforeUrl = URL.createObjectURL(blob);
+      renderPhoto(await response.json());
+    } catch (e) {
+      show(photoError, "Could not read that photo, or the service is unreachable.");
+    } finally {
+      photoBtn.disabled = false;
+      $("photo-progress").textContent = "";
+    }
+  }
+  photoBtn.addEventListener("click", runBlur);
+
+  function renderPhoto(data) {
+    lastPhoto = data;
+    const c = data.checks || {};
+    const chips = [
+      el("span", "check good", (c.faces_kept || 0) + " kept"),
+      el("span", "check" + (c.faces_blurred ? " cut" : ""), (c.faces_blurred || 0) + " face" + (c.faces_blurred === 1 ? "" : "s") + " blurred"),
+      el("span", "check" + (c.plates_blurred ? " cut" : ""), (c.plates_blurred || 0) + " plate" + (c.plates_blurred === 1 ? "" : "s") + " blurred"),
+    ];
+    if (c.location_removed) chips.push(el("span", "check good", "GPS location removed"));
+    else if (c.metadata_removed) chips.push(el("span", "check good", "Photo metadata removed"));
+    $("photo-checks").replaceChildren(...chips);
+    $("photo-before").src = beforeUrl;
+    $("photo-after").src = data.image;
+    $("photo-download").href = data.image;
+
+    const stage = $("photo-stage");
+    stage.querySelectorAll(".face-box").forEach((n) => n.remove());
+    const pct = (v, total) => (100 * v / total) + "%";
+    const box = (item, cls, label) => {
+      const b = item.box;
+      const node = el(cls === "plate" ? "span" : "button", "face-box " + cls);
+      node.style.left = pct(b.left, data.width);
+      node.style.top = pct(b.top, data.height);
+      node.style.width = pct(b.right - b.left, data.width);
+      node.style.height = pct(b.bottom - b.top, data.height);
+      node.append(el("span", null, label));
+      return node;
+    };
+    (data.faces || []).forEach((f) => {
+      const node = box(f, f.decision, f.decision === "kept" ? "Kept" : "Blurred");
+      node.type = "button";
+      node.title = f.reason + ". Tap to " + (f.decision === "kept" ? "blur" : "keep") + ".";
+      node.setAttribute("aria-label", (f.decision === "kept" ? "Kept face" : "Blurred face") + ", " + f.reason + ". Tap to change.");
+      node.addEventListener("click", () => {
+        const b = f.box;
+        Object.keys(overrides).forEach((k) => {
+          const [x, y] = k.split(",").map(Number);
+          if (x >= b.left && x < b.right && y >= b.top && y < b.bottom) delete overrides[k];
+        });
+        overrides[Math.round((b.left + b.right) / 2) + "," + Math.round((b.top + b.bottom) / 2)] =
+          f.decision === "kept" ? "blurred" : "kept";
+        runBlur();
+      });
+      stage.append(node);
+    });
+    (data.plates || []).forEach((p) => stage.append(box(p, "plate", "Plate")));
+    const u = data.usage || {};
+    $("photo-meta").textContent = (data.latency_ms / 1000).toFixed(1) + " s · " + data.width + "×" + data.height +
+      " · " + (u.total_tokens || 0) + " tokens · " + (data.model || "");
+    photoResult.hidden = false;
+  }
 })();
+

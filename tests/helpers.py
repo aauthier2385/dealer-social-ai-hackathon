@@ -78,6 +78,7 @@ async def acall(app, method, path, headers=None, body=b"", client=("127.0.0.1", 
     raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
     if body:
         raw_headers.append((b"content-length", str(len(body)).encode()))
+    path, _, query = path.partition("?")
     scope = {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -86,7 +87,7 @@ async def acall(app, method, path, headers=None, body=b"", client=("127.0.0.1", 
         "scheme": "http",
         "path": path,
         "raw_path": path.encode(),
-        "query_string": b"",
+        "query_string": query.encode(),
         "root_path": "",
         "headers": raw_headers,
         "client": client,
