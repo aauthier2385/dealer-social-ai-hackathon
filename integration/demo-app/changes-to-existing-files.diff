@@ -81,7 +81,7 @@ index 8a905c6..afd85fe 100644
      body.push_str(FEED_LIVE_JS);
      body.push_str(FEED_SCROLL_JS);
 diff --git a/src/routes/social.rs b/src/routes/social.rs
-index 2c3ae00..fc89d16 100644
+index 2c3ae00..1347697 100644
 --- a/src/routes/social.rs
 +++ b/src/routes/social.rs
 @@ -16,6 +16,15 @@ struct MsgForm {
@@ -122,7 +122,7 @@ index 2c3ae00..fc89d16 100644
      let me = match current_user(&r, p.get_ref()).await {
          Some(u) => u,
          None => return go("/login"),
-@@ -703,12 +718,41 @@ async fn conversation(r: HttpRequest, p: web::Data<PgPool>, id: web::Path<Uuid>)
+@@ -703,13 +718,42 @@ async fn conversation(r: HttpRequest, p: web::Data<PgPool>, id: web::Path<Uuid>)
          String::new()
      };
  
@@ -161,10 +161,12 @@ index 2c3ae00..fc89d16 100644
 +{ai_bar}
  <div class="thread" id="thread">{bubbles}</div>
 -<form class="send" id="messageSend" method="post" action="/messages"><input type="hidden" name="recipient_id" value="{other}"><input id="messageInput" name="body" placeholder="Message {name_attr}…" autocomplete="off" maxlength="2000" required><button class="send-button" aria-label="Send message">➤</button></form>
+-<p id="messageStatus" class="muted small" role="status" aria-live="polite">Keep messages respectful. When safety checks are enabled, private message text is sent to OpenAI before delivery. <a href="/privacy">Privacy Notice</a>.</p>
 +<form class="send" id="messageSend" method="post" action="/messages"><input type="hidden" name="recipient_id" value="{other}">{followup_field}<input id="messageInput" name="body"{draft_value} placeholder="Message {name_attr}…" autocomplete="off" maxlength="2000" required><button class="send-button" aria-label="Send message">➤</button></form>
- <p id="messageStatus" class="muted small" role="status" aria-live="polite">Keep messages respectful. When safety checks are enabled, private message text is sent to OpenAI before delivery. <a href="/privacy">Privacy Notice</a>.</p>
++<p id="messageStatus" class="muted small" role="status" aria-live="polite">Be respectful. Messages are moderated. <a href="/privacy">Privacy Notice</a>.</p>
  </div>
  </div>
+ <script>
 @@ -757,7 +801,7 @@ async fn conversation(r: HttpRequest, p: web::Data<PgPool>, id: web::Path<Uuid>)
              "Customer"
          },

@@ -1,8 +1,19 @@
 # Dealer Social AI
 
 **A relationship-memory agent for car dealerships, built on Meta's models.**
+When a salesperson leaves, the customer relationships they built stay with the store.
 
-Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026), Startup track, theme *Build for Your World*.
+Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), Startup track, theme *Build for Your World*,
+by Andrew Authier, a sales manager at a Ford dealership in Tennessee and founder of [The Dealer Social](https://www.thedealersocial.com).
+
+| | |
+|---|---|
+| 🎬 **Demo video (3 min)** | [The Dealer Social × Meta AI: Keeping Customer Relationships](https://www.youtube.com/watch?v=KAK70NaoxkU) |
+| 🌐 **Live demo** | <https://dealer-social-demo.onrender.com> (fictional store and customers; logins are in the submission form) |
+| 🧠 **Meta models** | Muse Spark 1.3 · Muse Voice Transcribe · SAM 3.1 · Muse Image |
+| ✅ **Quality** | 172 tests · ruff · gitleaks secret scan · CI on every push |
+
+![How The Dealer Social uses Meta AI](docs/architecture.png)
 
 > **Everything in this repository was built during the Hackathon.** It is a new, standalone
 > service. The existing product it plugs into, [The Dealer Social](https://www.thedealersocial.com),
@@ -20,17 +31,28 @@ salesperson leaves (and turnover in car sales is high), the relationship leaves 
 The Dealer Social is a live app that keeps dealership staff and customers connected between
 visits. This service gives it a memory.
 
-## What it will do
+## What it does
 
-| | Feature | Meta models | Status |
-|---|---|---|---|
-| 0 | Service foundation: auth, credit protection, safe Meta client, test page | Muse Spark | ✅ Built |
-| 1 | **Relationship memory**: voice note → relationship facts, each linked to the exact sentence it came from | Voice Transcribe, Muse Spark | ✅ Built |
-| 2 | **Follow-up planner**: the dealership's own cadence (day-after check-in, thank-you card, 30-day call, first service, birthday, anniversary) plus life-event check-ins, drafted in the salesperson's voice; a human approves every message | Muse Spark | ✅ Built |
-| 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark | ✅ Built |
-| 4 | **Relationships at risk**: a manager brief of customers who need attention | Muse Spark | ✅ Built |
-| 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 | ✅ Built |
-| 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image, Muse Spark, SAM 3.1 | ✅ Built |
+| | Feature | Meta models |
+|---|---|---|
+| 1 | **Relationship memory**: voice note → relationship facts, each linked to the exact sentence it came from | Voice Transcribe, Muse Spark |
+| 2 | **Follow-up planner**: the dealership's own cadence (day-after check-in, thank-you card, 30-day call, first service, birthday, anniversary) plus life-event check-ins, drafted in the salesperson's voice; a human approves every message | Muse Spark |
+| 3 | **Salesperson handoff**: a brief and a warm introduction when a customer's salesperson leaves | Muse Spark |
+| 4 | **Relationships at risk**: a manager brief of customers who need attention | Muse Spark |
+| 5 | **Privacy blur**: bystanders' faces and license plates blurred before store photos are posted | SAM 3.1 |
+| 6 | **Truckiversary**: delivery-day photos turned into one-year anniversary posts | Muse Image, Muse Spark, SAM 3.1 |
+
+## Try it in two minutes
+
+Sign in to the [live demo](https://dealer-social-demo.onrender.com) as the sales manager (logins are in the submission form). Everything in it is fictional.
+
+1. **Messages → Priya Shah → 🎙 Voice note.** Record 20 seconds about her (family, a pet, a hobby), then review the facts, each with the words it came from.
+2. **Follow-ups.** See the plan drafted in each salesperson's own voice; press **Use draft** to open it in the chat.
+3. **Follow-ups → Reassign a salesperson's customers.** Move Joey Marsh's (left) customers to another salesperson and read the briefs and warm introductions.
+4. **This week's at-risk brief.** The store's quiet relationships, ranked, each with one next step.
+5. **News Feed → Photo / Video.** Add a photo with people in the background and press **Blur bystanders & plates**, or **🎉 Truckiversary post** to make an anniversary card.
+
+Prefer the raw API? Run this service locally and open `/playground` (see below).
 
 ## How relationship memory stays honest
 
@@ -216,7 +238,7 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 
 | Date | Built |
 |---|---|
-| Oct 27 | Service foundation: config, token auth, rate and concurrency limits, safe Meta client, `/health`, `/v1/ping-model`, `/playground`, 28 tests, CI |
+| Oct 26 | Service foundation: config, token auth, rate and concurrency limits, safe Meta client, `/health`, `/v1/ping-model`, `/playground`, 28 tests, CI |
 | Oct 27 | Feature 1, relationship memory: Voice Transcribe (diarization), structured extraction, quote verification in code, privacy screen and redaction, judge pass, browser audio conversion and recording, playground results view, 49 tests |
 | Oct 27 | First real run fixes: summary now written by the judge from verified facts only (a co-signing detail had leaked through the summary), co-signing and credit applications added to the privacy screen, one withheld entry per sentence, most serious category wins, 55 tests |
 | Oct 27 | Real-run tuning from three debriefs: question-and-answer facts (the self-check reads each answer with the lines before it), bereavement added to the privacy screen, self-check switched to minimal reasoning to cut cost, safe facts kept from sentences that also hold a sensitive detail, 61 tests |
@@ -229,10 +251,12 @@ along with a startup check and a [gitleaks](https://github.com/gitleaks/gitleaks
 | Oct 27 | Name corrections: tap a misheard name to fix it everywhere it is used (quotes stay as heard), checked in the browser on desktop and phone |
 | Oct 27 | Feature 3, salesperson handoff: brief with every point tied to a fact it mentions, warm introduction in the new salesperson's voice with a no-departure-reason check, playground section, 113 tests |
 | Oct 27 | Transcription stutters ("Ranger Ranger") removed from people, facts and summary; quotes stay as heard; filler lines ("oh oh nice") no longer shown as the question, 116 tests |
-| Oct 28 | Feature 6, relationships at risk: signals scored and ranked in code, top customers explained by Muse Spark with every explanation citing its signals, code-only mode, sample store in the playground, 129 tests |
+| Oct 28 | Feature 4, relationships at risk: signals scored and ranked in code, top customers explained by Muse Spark with every explanation citing its signals, code-only mode, sample store in the playground, 129 tests |
 | Oct 28 | Integration into The Dealer Social demo app (copied to `integration/`): voice note in the customer's chat with review and name fixes, three new tables, Follow-ups tab after Appointments with Use draft / Mark done / Snooze / Skip and a due badge, next-follow-up bar in each chat, admin store view, reassign-with-introductions handoff, at-risk brief, fictional demo store seed |
 | Oct 29 | Feature 5, privacy blur for store photos: SAM 3.1 faces and license plates (two requests at once), main subjects kept and background people blurred in code, tap to keep or blur, metadata and GPS removed, fails closed, playground before/after view, 148 tests |
 | Oct 29 | Privacy blur in The Dealer Social's News Feed composer (staff only, copied to `integration/`): blur bystanders and plates before posting, tap to keep or blur, the blurred photo replaces the chosen file |
 | Oct 29 | Privacy blur real-run fix (a crowded go-kart track): the main group must stand together, so similar-size strangers are blurred by default; face boxes stay lined up on tall photos, 151 tests |
 | Oct 29 | Feature 6, Truckiversary posts: Muse Image paints the celebration scene, the real (privacy-blurred) photo goes on top untouched, code draws the words, Muse Spark writes a checked caption in the salesperson's voice, customer consent required, playground section, 165 tests |
 | Oct 29 | Truckiversary posts in The Dealer Social's News Feed composer (staff only, copied to `integration/`): customer details and consent, the card replaces the photo, the caption fills the post box in the salesperson's voice |
+| Oct 29 | Deployed to Render (AI service and demo app, auto-deploy only after CI passes); Meta upstream errors now named in the logs with Meta's request id, out-of-credits reported plainly, and a startup check that logs which models the key can see from the server, 172 tests |
+| Oct 29 | Demo video, architecture slide and this README |
